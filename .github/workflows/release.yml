@@ -1,0 +1,72 @@
+name: Build & Release YZ-Volume
+
+on:
+  push:
+    branches: ['main']
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    # This job will only run if you make a commit with a message like: "Release 1.2.3"
+    if: "startsWith(github.event.head_commit.message, 'Release ')"
+    runs-on: windows-latest
+
+    permissions:
+      contents: write # This permission is required to create a GitHub Release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch all history so we can generate a changelog
+          fetch-depth: 0
+
+      - name: Get Version from commit message
+        id: get_version
+        shell: bash
+        run: |
+          # Extract the version number from the commit message (e.g., "Release 1.2.3" -> "1.2.3")
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          VERSION=${COMMIT_MSG#Release }
+          echo "Extracted version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build the application in Release mode
+        # We publish to a single folder, ready for zipping.
+        # The version is embedded into the assembly info.
+        run: dotnet publish --configuration Release --output ./publish -p:Version=${{ steps.get_version.outputs.VERSION }}
+
+      - name: Prepare Release Artifact
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.get_version.outputs.VERSION }}"
+          # Create a clean zip file of the published application
+          Compress-Archive -Path ./publish/* -DestinationPath "YZ-Volume_${VERSION}_win-x64.zip"
+
+      - name: Generate Changelog
+        id: generate_changelog
+        run: |
+          echo "## Changes in v${{ steps.get_version.outputs.VERSION }}" > changelog.md
+          # Get the log of commits since the last tag until the current commit (HEAD)
+          git log --pretty=format:"- %s ([%h](https://github.com/${{ github.repository }}/commit/%h))" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> changelog.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # The tag will be e.g., "v1.2.3"
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          # The release title will be e.g., "Release v1.2.3"
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          # Use the changelog we just generated as the release body
+          body_path: changelog.md
+          # Upload our zip file
+          files: |
+            YZ-Volume_*.zip
