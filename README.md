@@ -1,5 +1,19 @@
 # YZ-Volume
 
+### in short:
+
+Tray-App to control the volume of selectable audio devices.
+Bonus: VB-audio-Matrix integration
+
+<img width="284" height="328" alt="image" src="https://github.com/user-attachments/assets/2fc1cc52-99a1-4c4c-8374-c77c713efbe8" />
+
+<details>
+   <summary>Settings Page</summary>   
+   <img width="561" height="608" alt="image" src="https://github.com/user-attachments/assets/a23bcea2-f9d1-455d-b019-4f65c434f137" />
+</details>
+
+
+---
 
 
 YZ-Volume is a sophisticated audio control utility for Windows, designed for power users who need fast, granular control over their system's audio devices. It provides a sleek, modern UI that lives in the system tray and offers advanced integration with VB-Audio's powerful Matrix software.
@@ -33,18 +47,6 @@ https://github.com/user-attachments/assets/b3212844-3708-45e6-9301-95ff9df91ef8
 
 ---
 
-## 📸 Screenshots
-
-#### Main Control Widget
-*The main flyout provides instant access to your most important controls.*
-
-
-#### Settings Window
-*A powerful, all-in-one control center for configuring devices, VBAN, and managing presets.*
-
-
----
-
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -62,7 +64,7 @@ https://github.com/user-attachments/assets/b3212844-3708-45e6-9301-95ff9df91ef8
 
 ### Configuration
 
-1.  **Right-click** the YZ-Volume tray icon and select **"Settings..."**.
+1.  select **"Settings..."**.
 2.  **Windows Devices:** Check the boxes for the speakers and microphones you want to control. You can also assign custom names in the textboxes on the right.
 3.  **VBAN Integration (Optional):**
     *   Toggle the **VBAN** button to ON.
