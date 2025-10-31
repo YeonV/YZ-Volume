@@ -12,13 +12,17 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml.Linq;
+using CheckBox = System.Windows.Controls.CheckBox;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace YZ_Volume
 {
     public partial class SettingsWindow : Window
     {
         private List<Preset> _presets;
-        private Dictionary<string, (System.Windows.Controls.CheckBox VisibiltyCheckBox, System.Windows.Controls.TextBox NameTextBox)> deviceControls = new();
+        private Dictionary<string, (CheckBox VisibiltyCheckBox, TextBox NameTextBox)> deviceControls = new();
+        // NEW: A way to track the new textboxes
+        private Dictionary<Preset, TextBox> _presetIndexTextBoxes = new();
 
         public SettingsWindow()
         {
@@ -35,9 +39,7 @@ namespace YZ_Volume
             VbanToggleButton.Click += (s, e) => UpdateVbanTestPanelVisibility();
             UpdateVbanTestPanelVisibility();
         }
-
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
-
         private void LoadAndSeedPresets()
         {
             string json = Properties.Settings.Default.PresetsJson;
@@ -54,9 +56,10 @@ namespace YZ_Volume
 
         public List<Preset> GetDefaultPresets()
         {
+            // Now we must include the VbanIndex for our defaults
             return new List<Preset> {
                 new Preset {
-                    Name = "PC 5.1",
+                    Name = "PC 5.1", VbanIndex = 1,
                     Controls = new List<MatrixControl> {
                         new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN1.OUT[1])" }, InitialGains = { -10.0 } },
                         new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN1.OUT[2])" }, InitialGains = { -9.0 } },
@@ -67,7 +70,7 @@ namespace YZ_Volume
                     }
                 },
                 new Preset {
-                    Name = "PC 2.0",
+                    Name = "PC 2.0", VbanIndex = 2,
                     Controls = new List<MatrixControl> {
                         new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN1.OUT[1])", "Point(VAIO2.IN[1],WIN1.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
                         new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN1.OUT[1])", "Point(VAIO2.IN[2],WIN1.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
@@ -78,7 +81,7 @@ namespace YZ_Volume
                     }
                 },
                 new Preset {
-                    Name = "Beamer 5.1",
+                    Name = "Beamer 5.1", VbanIndex = 3,
                     Controls = new List<MatrixControl> {
                         new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN4.OUT[2])" }, InitialGains = { -1.0 } },
                         new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN4.OUT[1])" }, InitialGains = { 0.0 } },
@@ -94,13 +97,22 @@ namespace YZ_Volume
         private void UpdatePresetManagerUI()
         {
             PresetManagerPanel.Children.Clear();
+            _presetIndexTextBoxes.Clear(); // Clear the tracking dictionary
+
             foreach (var preset in _presets)
             {
-                var grid = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, 5) };
+                var grid = new Grid { Margin = new Thickness(0, 0, 0, 5) };
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                var nameBlock = new System.Windows.Controls.TextBlock { Text = preset.Name, VerticalAlignment = VerticalAlignment.Center };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Index TextBox
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Export
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Delete
+
+                var nameBlock = new TextBlock { Text = preset.Name, VerticalAlignment = VerticalAlignment.Center };
+
+                // NEW: Create the TextBox for the VBAN Index
+                var indexTextBox = new TextBox { Text = preset.VbanIndex.ToString(), Width = 40, Margin = new Thickness(5, 0, 5, 0) };
+                _presetIndexTextBoxes[preset] = indexTextBox; // Track it
+
                 var exportButton = new System.Windows.Controls.Button { Content = "\uE896", Style = (Style)FindResource("TestIconButtonStyle"), ToolTip = "Export to XML" };
                 var deleteButton = new System.Windows.Controls.Button { Content = "\uE74D", Style = (Style)FindResource("TestIconButtonStyle"), ToolTip = "Delete", Margin = new Thickness(5, 0, 0, 0) };
                 var currentPreset = preset;
@@ -112,10 +124,14 @@ namespace YZ_Volume
                         UpdatePresetManagerUI();
                     }
                 };
-                System.Windows.Controls.Grid.SetColumn(nameBlock, 0);
-                System.Windows.Controls.Grid.SetColumn(exportButton, 1);
-                System.Windows.Controls.Grid.SetColumn(deleteButton, 2);
+
+                Grid.SetColumn(nameBlock, 0);
+                Grid.SetColumn(indexTextBox, 1); // Add to layout
+                Grid.SetColumn(exportButton, 2);
+                Grid.SetColumn(deleteButton, 3);
+
                 grid.Children.Add(nameBlock);
+                grid.Children.Add(indexTextBox); // Add to layout
                 grid.Children.Add(exportButton);
                 grid.Children.Add(deleteButton);
                 PresetManagerPanel.Children.Add(grid);
@@ -126,11 +142,14 @@ namespace YZ_Volume
         {
             var openFileDialog = new Microsoft.Win32.OpenFileDialog { Filter = "XML Files (*.xml)|*.xml", Multiselect = true };
             if (openFileDialog.ShowDialog() != true) return;
+
             foreach (string filename in openFileDialog.FileNames)
             {
                 try
                 {
                     var newPreset = ParsePresetFromXml(filename);
+                    // When importing, assign the next available index as a default
+                    newPreset.VbanIndex = _presets.Count + 1;
                     _presets.Add(newPreset);
                 }
                 catch (Exception ex)
@@ -214,6 +233,20 @@ namespace YZ_Volume
             }
             Properties.Settings.Default.VisibleDeviceIDs = visibleIDs;
             Properties.Settings.Default.CustomDeviceNames = JsonConvert.SerializeObject(customNamesDict);
+
+            // --- NEW: Update preset objects with values from TextBoxes before saving ---
+            foreach (var preset in _presets)
+            {
+                if (_presetIndexTextBoxes.TryGetValue(preset, out TextBox? indexBox))
+                {
+                    if (int.TryParse(indexBox.Text, out int newIndex))
+                    {
+                        preset.VbanIndex = newIndex;
+                    }
+                }
+            }
+            // --- END NEW ---
+
             Properties.Settings.Default.PresetsJson = JsonConvert.SerializeObject(_presets);
             Properties.Settings.Default.Save();
             DialogResult = true;

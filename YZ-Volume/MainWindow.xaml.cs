@@ -72,27 +72,24 @@ namespace YZ_Volume
         {
             InitializeVbanClient();
 
-            if (Properties.Settings.Default.VbanEnabled)
+            if (Properties.Settings.Default.VbanEnabled && _presets.Any())
             {
                 string lastName = Properties.Settings.Default.LastSelectedPresetName;
-                int lastIndex = _presets.FindIndex(p => p.Name == lastName);
-                if (lastIndex == -1) lastIndex = 0;
+                var lastPreset = _presets.FirstOrDefault(p => p.Name == lastName) ?? _presets.First(); // Fallback to first
 
-                if (lastIndex >= 0 && lastIndex < PresetComboBox.Items.Count)
+                // Find the display index of the last preset
+                int displayIndex = _presets.IndexOf(lastPreset);
+                if (displayIndex != -1)
                 {
                     PresetComboBox.SelectionChanged -= PresetComboBox_SelectionChanged;
-                    PresetComboBox.SelectedIndex = lastIndex;
+                    PresetComboBox.SelectedIndex = displayIndex;
                     PresetComboBox.SelectionChanged += PresetComboBox_SelectionChanged;
 
-                    ApplyPreset(lastIndex, false);
+                    ApplyPreset(lastPreset, false); // Apply without sending commands
                 }
             }
-            else
-            {
-                RefreshAllControls();
-            }
+            else { RefreshAllControls(); }
         }
-
         private void InitializeVbanClient()
         {
             if (Properties.Settings.Default.VbanEnabled)
@@ -328,17 +325,29 @@ namespace YZ_Volume
         private void PresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!IsLoaded || PresetComboBox.SelectedItem == null || _matrixClient == null) return;
-            int presetIndex = PresetComboBox.SelectedIndex;
-            if (presetIndex == -1) return;
-            ApplyPreset(presetIndex, true);
+            if (PresetComboBox.SelectedIndex == -1) return;
+
+            // Get the name of the selected preset
+            string selectedPresetName = PresetComboBox.SelectedItem.ToString();
+            // Find the full preset object in our list
+            var selectedPreset = _presets.FirstOrDefault(p => p.Name == selectedPresetName);
+
+            if (selectedPreset == null) return;
+
+            // Use the stored VbanIndex to apply, not the ComboBox index
+            ApplyPreset(selectedPreset, true);
         }
 
-        private void ApplyPreset(int presetIndex, bool sendCommands)
+
+        private void ApplyPreset(Preset preset, bool sendCommands)
         {
-            if (presetIndex < 0 || presetIndex >= _presets.Count) return;
+            if (preset == null) return;
+
+            // Send VBAN commands if requested
             if (sendCommands && _matrixClient != null)
             {
-                int commandIndex = presetIndex + 1;
+                // Use the VbanIndex from the preset object to build the command
+                int commandIndex = preset.VbanIndex;
                 SendVbanCommand("Command.ResetGrid");
                 System.Threading.Thread.Sleep(50);
                 SendVbanCommand($"PresetPatch[{commandIndex}].Apply");
@@ -346,10 +355,24 @@ namespace YZ_Volume
                 SendVbanCommand($"PresetPatch[{commandIndex}].Select");
             }
 
-            RefreshAllControls();
+            // Find the display index of this preset in our current ComboBox list
+            int displayIndex = _presets.IndexOf(preset);
+            if (displayIndex != -1)
+            {
+                // Temporarily detach handler to prevent the event from firing again
+                PresetComboBox.SelectionChanged -= PresetComboBox_SelectionChanged;
+                // Set the ComboBox to show the correct item
+                PresetComboBox.SelectedIndex = displayIndex;
+                // Re-attach the handler for future user interactions
+                PresetComboBox.SelectionChanged += PresetComboBox_SelectionChanged;
 
-            Properties.Settings.Default.LastSelectedPresetName = _presets[presetIndex].Name;
-            Properties.Settings.Default.Save();
+                // Rebuild the UI to show the correct sliders for this preset
+                RefreshAllControls();
+
+                // Save the name of the last active preset for the next app launch
+                Properties.Settings.Default.LastSelectedPresetName = preset.Name;
+                Properties.Settings.Default.Save();
+            }
         }
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettingsWindow();
