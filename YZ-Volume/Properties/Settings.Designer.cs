@@ -108,13 +108,25 @@ namespace YZ_Volume.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("0")]
-        public int LastSelectedPresetIndex {
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string PresetsJson {
             get {
-                return ((int)(this["LastSelectedPresetIndex"]));
+                return ((string)(this["PresetsJson"]));
             }
             set {
-                this["LastSelectedPresetIndex"] = value;
+                this["PresetsJson"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastSelectedPresetName {
+            get {
+                return ((string)(this["LastSelectedPresetName"]));
+            }
+            set {
+                this["LastSelectedPresetName"] = value;
             }
         }
     }

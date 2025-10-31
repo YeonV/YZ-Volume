@@ -1,15 +1,17 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
-// This class defines a single user-configurable Matrix slider.
+[Serializable]
 public class MatrixControl
 {
     public string Label { get; set; } = string.Empty;
-    public string CommandBase { get; set; } = string.Empty;
-    public double InitialGain { get; set; }
+    public List<string> CommandBases { get; set; } = new();
+
+    // THE FINAL UPGRADE: A list to hold the gain for each CommandBase
+    public List<double> InitialGains { get; set; } = new();
 }
 
-// This class defines a complete preset, including its name and the list
-// of Matrix controls it uses.
+[Serializable]
 public class Preset
 {
     public string Name { get; set; } = string.Empty;
