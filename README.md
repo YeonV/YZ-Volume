@@ -12,6 +12,12 @@ Bonus: VB-audio-Matrix integration
    <img width="561" height="608" alt="image" src="https://github.com/user-attachments/assets/a23bcea2-f9d1-455d-b019-4f65c434f137" />
 </details>
 
+<details>
+   <summary> ✨ Video ✨ </summary>   
+   
+   https://github.com/user-attachments/assets/b3212844-3708-45e6-9301-95ff9df91ef8
+   
+</details>
 
 ---
 
@@ -43,9 +49,6 @@ This application was built to solve the workflow limitations of standard Windows
 
 ---
 
-https://github.com/user-attachments/assets/b3212844-3708-45e6-9301-95ff9df91ef8
-
----
 
 ## 🚀 Getting Started
 
