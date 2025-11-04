@@ -6,15 +6,15 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
-
 // Aliases
 using Grid = System.Windows.Controls.Grid;
-using Slider = System.Windows.Controls.Slider;
-using TextBlock = System.Windows.Controls.TextBlock;
 using MouseButtons = System.Windows.Forms.MouseButtons;
 using MouseEventArgs = System.Windows.Forms.MouseEventArgs;
 using NotifyIcon = System.Windows.Forms.NotifyIcon;
+using Slider = System.Windows.Controls.Slider;
+using TextBlock = System.Windows.Controls.TextBlock;
 
 namespace YZ_Volume
 {
@@ -23,6 +23,8 @@ namespace YZ_Volume
         private NotifyIcon? _notifyIcon;
         private MatrixUdpClient? _matrixClient;
         private List<Preset> _presets = new();
+        private Dictionary<string, Slider> _matrixChannelSliders = new();
+        private Dictionary<Slider, RoutedPropertyChangedEventHandler<double>> _sliderEventHandlers = new();
 
         public MainWindow()
         {
@@ -31,6 +33,11 @@ namespace YZ_Volume
             Deactivated += OnDeactivated;
             Loaded += OnLoaded;
             InitializeNotifyIcon();
+
+            MasterVolumeSlider.ValueChanged += MasterVolumeSlider_ValueChanged;
+            MasterMuteButton.Click += MasterMuteButton_Click;
+            MasterNudgeDownButton.Click += MasterNudgeDownButton_Click;
+            MasterNudgeUpButton.Click += MasterNudgeUpButton_Click;
         }
 
         private void InitializeNotifyIcon()
@@ -75,34 +82,28 @@ namespace YZ_Volume
             if (Properties.Settings.Default.VbanEnabled && _presets.Any())
             {
                 string lastName = Properties.Settings.Default.LastSelectedPresetName;
-                var lastPreset = _presets.FirstOrDefault(p => p.Name == lastName) ?? _presets.First(); // Fallback to first
-
-                // Find the display index of the last preset
+                var lastPreset = _presets.FirstOrDefault(p => p.Name == lastName) ?? _presets.First();
                 int displayIndex = _presets.IndexOf(lastPreset);
                 if (displayIndex != -1)
                 {
                     PresetComboBox.SelectionChanged -= PresetComboBox_SelectionChanged;
                     PresetComboBox.SelectedIndex = displayIndex;
                     PresetComboBox.SelectionChanged += PresetComboBox_SelectionChanged;
-
-                    ApplyPreset(lastPreset, false); // Apply without sending commands
+                    ApplyPreset(lastPreset, false);
                 }
             }
             else { RefreshAllControls(); }
         }
+
         private void InitializeVbanClient()
         {
             if (Properties.Settings.Default.VbanEnabled)
             {
                 _presets = GetPresetsFromSettings();
-
                 PresetComboBox.Items.Clear();
-                foreach (var preset in _presets)
-                {
-                    PresetComboBox.Items.Add(preset.Name);
-                }
+                foreach (var preset in _presets) { PresetComboBox.Items.Add(preset.Name); }
                 PresetComboBox.Visibility = Visibility.Visible;
-
+                MasterSliderGrid.Visibility = Visibility.Visible;
                 if (_matrixClient == null)
                 {
                     var settings = Properties.Settings.Default;
@@ -112,6 +113,7 @@ namespace YZ_Volume
             }
             else
             {
+                MasterSliderGrid.Visibility = Visibility.Collapsed;
                 PresetComboBox.Visibility = Visibility.Collapsed;
                 if (_matrixClient != null)
                 {
@@ -126,7 +128,7 @@ namespace YZ_Volume
             string json = Properties.Settings.Default.PresetsJson;
             if (string.IsNullOrEmpty(json))
             {
-                var settingsWindow = new SettingsWindow();
+                var settingsWindow = new SettingsWindow(null);
                 var defaultPresets = settingsWindow.GetDefaultPresets();
                 Properties.Settings.Default.PresetsJson = JsonConvert.SerializeObject(defaultPresets);
                 Properties.Settings.Default.Save();
@@ -137,6 +139,8 @@ namespace YZ_Volume
 
         private void RefreshAllControls()
         {
+            _matrixChannelSliders.Clear();
+            _sliderEventHandlers.Clear();
             LoadAudioDevices();
             LoadMatrixControls();
         }
@@ -160,26 +164,18 @@ namespace YZ_Volume
             deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(85) });
             deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
             var muteButton = new System.Windows.Controls.Primitives.ToggleButton { Style = (Style)FindResource("MuteToggleButtonStyle"), IsChecked = device.AudioEndpointVolume.Mute, VerticalAlignment = VerticalAlignment.Center };
-
             string displayName = device.FriendlyName;
             string customNamesJson = Properties.Settings.Default.CustomDeviceNames;
             if (!string.IsNullOrEmpty(customNamesJson))
             {
                 var customNamesDict = JsonConvert.DeserializeObject<Dictionary<string, string>>(customNamesJson) ?? new Dictionary<string, string>();
-                if (customNamesDict.ContainsKey(device.ID) && !string.IsNullOrWhiteSpace(customNamesDict[device.ID]))
-                {
-                    displayName = customNamesDict[device.ID];
-                }
+                if (customNamesDict.ContainsKey(device.ID) && !string.IsNullOrWhiteSpace(customNamesDict[device.ID])) { displayName = customNamesDict[device.ID]; }
             }
             var nameLabel = new TextBlock { Text = displayName, Foreground = System.Windows.Media.Brushes.WhiteSmoke, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-
             var volumeSlider = new Slider { Minimum = 0, Maximum = 100, Value = (int)(device.AudioEndpointVolume.MasterVolumeLevelScalar * 100), Style = (Style)FindResource("UltimateSliderStyle") };
-
             volumeSlider.ValueChanged += (sender, args) => { device.AudioEndpointVolume.MasterVolumeLevelScalar = (float)(args.NewValue / 100.0); };
             muteButton.Click += (sender, args) => { device.AudioEndpointVolume.Mute = muteButton.IsChecked ?? false; };
-
             Grid.SetColumn(muteButton, 0);
             Grid.SetColumn(nameLabel, 1);
             Grid.SetColumn(volumeSlider, 2);
@@ -208,145 +204,118 @@ namespace YZ_Volume
 
         private void AddMatrixControlToUI(MatrixControl control)
         {
-            // --- UI LAYOUT: 5 Columns for [Mute] [Label] [Slider] [-] [+] ---
-            var deviceGrid = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, 15) };
-            deviceGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto }); // Mute
-            deviceGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(85) });   // Label
-            deviceGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // Slider
-            deviceGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto }); // Nudge Down
-            deviceGrid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto }); // Nudge Up
+            var currentControl = control;
+            var deviceGrid = new Grid { Margin = new Thickness(0, 0, 0, 15) };
+            deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(85) });
+            deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            // --- CREATE CONTROLS (FULLY QUALIFIED) ---
-            var muteButton = new System.Windows.Controls.Primitives.ToggleButton
-            {
-                Style = (Style)FindResource("MuteToggleButtonStyle"),
-                VerticalAlignment = VerticalAlignment.Center
-            };
+            var muteButton = new System.Windows.Controls.Primitives.ToggleButton { Style = (Style)FindResource("MuteToggleButtonStyle"), VerticalAlignment = VerticalAlignment.Center };
+            var nameLabel = new TextBlock { Text = currentControl.Label, Foreground = System.Windows.Media.Brushes.WhiteSmoke, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis };
 
-            var nameLabel = new System.Windows.Controls.TextBlock
-            {
-                Text = control.Label,
-                Foreground = System.Windows.Media.Brushes.WhiteSmoke,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(10, 0, 10, 0),
-                TextTrimming = TextTrimming.CharacterEllipsis
-            };
-
-            var volumeSlider = new System.Windows.Controls.Slider
+            double initialGain = currentControl.InitialGains.FirstOrDefault();
+            var volumeSlider = new Slider
             {
                 Minimum = -100,
-                Maximum = 0,
-                Value = control.InitialGains.FirstOrDefault(),
+                Maximum = 20,
+                Value = initialGain,
                 Style = (Style)FindResource("UltimateSliderStyle"),
                 IsSnapToTickEnabled = true,
                 TickFrequency = 1,
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
+                Tag = initialGain
             };
 
-            var nudgeDownButton = new System.Windows.Controls.Button
-            {
-                Content = "-",
-                Style = (Style)FindResource("NudgeButtonStyle"),
-                Margin = new Thickness(5, 0, 2, 0),
-                ToolTip = "Nudge Gain -1 dB"
-            };
+            var nudgeDownButton = new System.Windows.Controls.Button { Content = "-", Style = (Style)FindResource("NudgeButtonStyle"), Margin = new Thickness(5, 0, 2, 0), ToolTip = "Nudge Gain -1 dB" };
+            var nudgeUpButton = new System.Windows.Controls.Button { Content = "+", Style = (Style)FindResource("NudgeButtonStyle"), Margin = new Thickness(2, 0, 0, 0), ToolTip = "Nudge Gain +1 dB" };
 
-            var nudgeUpButton = new System.Windows.Controls.Button
-            {
-                Content = "+",
-                Style = (Style)FindResource("NudgeButtonStyle"),
-                Margin = new Thickness(2, 0, 0, 0),
-                ToolTip = "Nudge Gain +1 dB"
-            };
-
-            // --- WIRE UP EVENT HANDLERS ---
-            volumeSlider.ValueChanged += (sender, args) => {
+            RoutedPropertyChangedEventHandler<double> valueChangedHandler = (sender, args) => {
                 var commands = new List<string>();
-                foreach (var commandBase in control.CommandBases)
-                {
-                    commands.Add($"{commandBase}.dBGain = {((int)args.NewValue)}");
-                }
+                foreach (var commandBase in currentControl.CommandBases) { commands.Add($"{commandBase}.dBGain = {((int)args.NewValue)}"); }
                 SendVbanCommand(string.Join(";", commands));
             };
+            volumeSlider.ValueChanged += valueChangedHandler;
+            _sliderEventHandlers[volumeSlider] = valueChangedHandler;
 
             muteButton.Click += (sender, args) => {
                 string muteValue = muteButton.IsChecked == true ? "1" : "0";
                 var commands = new List<string>();
-                foreach (var commandBase in control.CommandBases)
-                {
-                    commands.Add($"{commandBase}.Mute = {muteValue}");
-                }
+                foreach (var commandBase in currentControl.CommandBases) { commands.Add($"{commandBase}.Mute = {muteValue}"); }
                 SendVbanCommand(string.Join(";", commands));
             };
-
             nudgeDownButton.Click += (sender, args) => {
                 var commands = new List<string>();
-                foreach (var commandBase in control.CommandBases)
-                {
-                    commands.Add($"{commandBase}.dBGain += -1.0");
-                }
+                foreach (var commandBase in currentControl.CommandBases) { commands.Add($"{commandBase}.dBGain += -1.0"); }
                 SendVbanCommand(string.Join(";", commands));
             };
-
             nudgeUpButton.Click += (sender, args) => {
                 var commands = new List<string>();
-                foreach (var commandBase in control.CommandBases)
-                {
-                    commands.Add($"{commandBase}.dBGain += 1.0");
-                }
+                foreach (var commandBase in currentControl.CommandBases) { commands.Add($"{commandBase}.dBGain += 1.0"); }
                 SendVbanCommand(string.Join(";", commands));
             };
 
-            // --- PLACE CONTROLS IN GRID (FULLY QUALIFIED) ---
-            System.Windows.Controls.Grid.SetColumn(muteButton, 0);
-            System.Windows.Controls.Grid.SetColumn(nameLabel, 1);
-            System.Windows.Controls.Grid.SetColumn(volumeSlider, 2);
-            System.Windows.Controls.Grid.SetColumn(nudgeDownButton, 3);
-            System.Windows.Controls.Grid.SetColumn(nudgeUpButton, 4);
+            if (currentControl.CommandBases.Any())
+            {
+                _matrixChannelSliders[currentControl.CommandBases.First()] = volumeSlider;
+            }
 
+            Grid.SetColumn(muteButton, 0);
+            Grid.SetColumn(nameLabel, 1);
+            Grid.SetColumn(volumeSlider, 2);
+            Grid.SetColumn(nudgeDownButton, 3);
+            Grid.SetColumn(nudgeUpButton, 4);
             deviceGrid.Children.Add(muteButton);
             deviceGrid.Children.Add(nameLabel);
             deviceGrid.Children.Add(volumeSlider);
             deviceGrid.Children.Add(nudgeDownButton);
             deviceGrid.Children.Add(nudgeUpButton);
-
             MatrixControlsPanel.Children.Add(deviceGrid);
         }
+
         private void SendVbanCommand(string command)
         {
             if (_matrixClient != null)
             {
-                // Send the entire command string (semicolons and all) in one single packet.
-                _matrixClient.SendCommand(command);
-                System.Diagnostics.Debug.WriteLine($"Sent VBAN Command: {command}");
+                var individualCommands = command.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var individualCommand in individualCommands)
+                {
+                    _matrixClient.SendCommand(individualCommand.Trim());
+                    System.Diagnostics.Debug.WriteLine($"Sent VBAN Command: {individualCommand.Trim()}");
+                }
             }
         }
 
         private void PresetComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!IsLoaded || PresetComboBox.SelectedItem == null || _matrixClient == null) return;
-            if (PresetComboBox.SelectedIndex == -1) return;
-
-            // Get the name of the selected preset
-            string selectedPresetName = PresetComboBox.SelectedItem.ToString();
-            // Find the full preset object in our list
-            var selectedPreset = _presets.FirstOrDefault(p => p.Name == selectedPresetName);
-
-            if (selectedPreset == null) return;
-
-            // Use the stored VbanIndex to apply, not the ComboBox index
+            int presetIndex = PresetComboBox.SelectedIndex;
+            if (presetIndex == -1) return;
+            var selectedPreset = _presets[presetIndex];
             ApplyPreset(selectedPreset, true);
         }
 
+        private void RefreshPreset_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
+
+            // Find the currently selected preset object
+            var selectedPreset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
+
+            if (selectedPreset != null)
+            {
+                // Call ApplyPreset but tell it NOT to send VBAN commands,
+                // only to refresh the UI sliders to their initial state.
+                ApplyPreset(selectedPreset, false);
+            }
+        }
 
         private void ApplyPreset(Preset preset, bool sendCommands)
         {
             if (preset == null) return;
-
-            // Send VBAN commands if requested
             if (sendCommands && _matrixClient != null)
             {
-                // Use the VbanIndex from the preset object to build the command
                 int commandIndex = preset.VbanIndex;
                 SendVbanCommand("Command.ResetGrid");
                 System.Threading.Thread.Sleep(50);
@@ -354,37 +323,66 @@ namespace YZ_Volume
                 System.Threading.Thread.Sleep(50);
                 SendVbanCommand($"PresetPatch[{commandIndex}].Select");
             }
-
-            // Find the display index of this preset in our current ComboBox list
-            int displayIndex = _presets.IndexOf(preset);
-            if (displayIndex != -1)
-            {
-                // Temporarily detach handler to prevent the event from firing again
-                PresetComboBox.SelectionChanged -= PresetComboBox_SelectionChanged;
-                // Set the ComboBox to show the correct item
-                PresetComboBox.SelectedIndex = displayIndex;
-                // Re-attach the handler for future user interactions
-                PresetComboBox.SelectionChanged += PresetComboBox_SelectionChanged;
-
-                // Rebuild the UI to show the correct sliders for this preset
-                RefreshAllControls();
-
-                // Save the name of the last active preset for the next app launch
-                Properties.Settings.Default.LastSelectedPresetName = preset.Name;
-                Properties.Settings.Default.Save();
-            }
+            RefreshAllControls();
+            Properties.Settings.Default.LastSelectedPresetName = preset.Name;
+            Properties.Settings.Default.Save();
         }
 
         private void SettingsButton_Click(object sender, RoutedEventArgs e) => OpenSettingsWindow();
 
         private void OpenSettingsWindow()
         {
-            var settingsWindow = new SettingsWindow { Owner = this };
+            var settingsWindow = new SettingsWindow(_matrixClient) { Owner = this };
             if (settingsWindow.ShowDialog() == true)
             {
                 InitializeVbanClient();
                 RefreshAllControls();
             }
+        }
+
+        private void MasterVolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
+            double masterOffset = e.NewValue;
+            foreach (var slider in _matrixChannelSliders.Values)
+            {
+                if (_sliderEventHandlers.TryGetValue(slider, out var handler)) { slider.ValueChanged -= handler; }
+                double baseGain = (double)slider.Tag;
+                double newVisualValue = baseGain + masterOffset;
+                newVisualValue = Math.Max(slider.Minimum, Math.Min(slider.Maximum, newVisualValue));
+                slider.Value = newVisualValue;
+                if (handler != null) { slider.ValueChanged += handler; }
+            }
+            var preset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
+            if (preset != null)
+            {
+                SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain = {((int)e.NewValue)}");
+            }
+        }
+
+        private void MasterMuteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
+            var preset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
+            if (preset != null)
+            {
+                string muteValue = ((System.Windows.Controls.Primitives.ToggleButton)sender).IsChecked == true ? "1" : "0";
+                SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Mute = {muteValue}");
+            }
+        }
+
+        private void MasterNudgeDownButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
+            var preset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
+            if (preset != null) SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain += -1.0");
+        }
+
+        private void MasterNudgeUpButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
+            var preset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
+            if (preset != null) SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain += 1.0");
         }
 
         private void OnDeactivated(object? sender, EventArgs e) => Hide();
@@ -395,6 +393,6 @@ namespace YZ_Volume
             base.OnClosing(e);
         }
 
-        private void VbanClient_OnStateUpdated(VoicemeeterState newState) { /* Placeholder for future RT-Packet implementation */ }
+        private void VbanClient_OnStateUpdated(VoicemeeterState newState) { /* Placeholder */ }
     }
 }

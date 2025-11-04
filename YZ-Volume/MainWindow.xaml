@@ -11,46 +11,68 @@
         WindowStartupLocation="Manual">
 
     <Border Background="#202020" CornerRadius="8" BorderBrush="#444" BorderThickness="1">
-        <!-- This new Grid simply overlays the button on top of the list -->
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <!-- NEW: Row for the Preset Selector -->
                 <RowDefinition Height="*" />
-                <!-- Row for the device list -->
             </Grid.RowDefinitions>
 
-            <!-- NEW: Preset Selector ComboBox in the top row -->
-            <ComboBox x:Name="PresetComboBox" 
-                      Grid.Row="0" 
-                      Margin="15,10,45,10"
-                      SelectionChanged="PresetComboBox_SelectionChanged">
-                
-                <!--
-                <ComboBoxItem Content="Preset 1"/>
-                <ComboBoxItem Content="Preset 2"/>
-                <ComboBoxItem Content="Preset 3"/>
-                -->
-            </ComboBox>
+            <Grid Grid.Row="0" Margin="20,10,45,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-            <!-- Device list is now in the second row -->
+                <ComboBox x:Name="PresetComboBox" 
+                          Grid.Column="0" 
+                          SelectionChanged="PresetComboBox_SelectionChanged"/>
+
+                <Button Grid.Column="1" 
+                        Content="&#xE72C;" 
+                        Style="{StaticResource TestIconButtonStyle}"
+                        Margin="5,0,0,0"
+                        Click="RefreshPreset_Click"
+                        ToolTip="Reset to Preset Values"/>
+            </Grid>
+
+
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <!-- This is now a container for BOTH panels -->
                 <StackPanel Margin="15,0,15,40">
-                    <!-- The original panel for Windows devices -->
+                    <!-- Panel for Windows Device Sliders -->
                     <StackPanel x:Name="DeviceListPanel" />
 
-                    <!-- NEW: Separator and Panel for Matrix Controls -->
+                    <!-- Separator between Windows and Matrix controls -->
                     <Separator x:Name="MatrixSeparator" 
                                Background="#444" 
                                Margin="0,10"
                                Visibility="Collapsed"/>
 
+                    <!-- Master Slider - Independent and at the top of Matrix section -->
+                    <Grid x:Name="MasterSliderGrid" Margin="0,0,0,15" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="85" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton Grid.Column="0" Style="{StaticResource MuteToggleButtonStyle}" VerticalAlignment="Center" x:Name="MasterMuteButton"/>
+                        <TextBlock Grid.Column="1" Text="Master" Foreground="WhiteSmoke" VerticalAlignment="Center" Margin="10,0" TextTrimming="CharacterEllipsis"/>
+                        <Slider Grid.Column="2" Minimum="-60" Maximum="12" Value="0" Style="{StaticResource UltimateSliderStyle}" IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center" x:Name="MasterVolumeSlider"/>
+                        <Button Grid.Column="3" Content="-" Style="{StaticResource NudgeButtonStyle}" Margin="5,0,2,0" ToolTip="Nudge Master Gain -1 dB" x:Name="MasterNudgeDownButton"/>
+                        <Button Grid.Column="4" Content="+" Style="{StaticResource NudgeButtonStyle}" Margin="2,0,0,0" ToolTip="Nudge Master Gain +1 dB" x:Name="MasterNudgeUpButton"/>
+                    </Grid>
+
+                    <Separator x:Name="MasterSeparator" 
+                               Background="#444" 
+                               Margin="0,0,0,10"
+                               Visibility="{Binding Visibility, ElementName=MasterSliderGrid}"/>
+
+                    <!-- Panel for individual Matrix Sliders -->
                     <StackPanel x:Name="MatrixControlsPanel" />
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- The Settings Button still floats on top of everything -->
             <Button Style="{StaticResource SettingsIconButtonStyle}" 
                     HorizontalAlignment="Right"
                     VerticalAlignment="Bottom"

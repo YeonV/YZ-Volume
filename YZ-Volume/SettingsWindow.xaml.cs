@@ -19,14 +19,15 @@ namespace YZ_Volume
 {
     public partial class SettingsWindow : Window
     {
-        private List<Preset> _presets;
+        private List<Preset> _presets = new();
         private Dictionary<string, (CheckBox VisibiltyCheckBox, TextBox NameTextBox)> deviceControls = new();
         // NEW: A way to track the new textboxes
         private Dictionary<Preset, TextBox> _presetIndexTextBoxes = new();
-
-        public SettingsWindow()
+        private MatrixUdpClient? _vbanClient;
+        public SettingsWindow(MatrixUdpClient? vbanClient)
         {
             InitializeComponent();
+            _vbanClient = vbanClient;
             DwmApi.UseImmersiveDarkMode(this, true);
 
             LoadAndSeedPresets();
@@ -72,12 +73,12 @@ namespace YZ_Volume
                 new Preset {
                     Name = "PC 2.0", VbanIndex = 2,
                     Controls = new List<MatrixControl> {
-                        new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN1.OUT[1])", "Point(VAIO2.IN[1],WIN1.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
-                        new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN1.OUT[1])", "Point(VAIO2.IN[2],WIN1.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
-                        new MatrixControl { Label = "C",  CommandBases = { "Point(VAIO2.IN[3],WIN1.OUT[1])", "Point(VAIO2.IN[3],WIN1.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
-                        new MatrixControl { Label = "S",  CommandBases = { "Point(VAIO2.IN[4],WIN1.OUT[1])", "Point(VAIO2.IN[4],WIN1.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
-                        new MatrixControl { Label = "RL", CommandBases = { "Point(VAIO2.IN[5],WIN1.OUT[1])", "Point(VAIO2.IN[5],WIN1.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
-                        new MatrixControl { Label = "RR", CommandBases = { "Point(VAIO2.IN[6],WIN1.OUT[1])", "Point(VAIO2.IN[6],WIN1.OUT[2])" }, InitialGains = { 0.0, 0.0 } }
+                        new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN1.OUT[1])", "Point(VAIO2.IN[1],WIN4.OUT[1])" }, InitialGains = { 0.0, 0.0 } },
+                        new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN1.OUT[2])", "Point(VAIO2.IN[2],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
+                        new MatrixControl { Label = "C",  CommandBases = { "Point(VAIO2.IN[3],WIN1.OUT[1])", "Point(VAIO2.IN[3],WIN1.OUT[2])", "Point(VAIO2.IN[3],WIN4.OUT[1])", "Point(VAIO2.IN[3],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
+                        new MatrixControl { Label = "S",  CommandBases = { "Point(VAIO2.IN[4],WIN1.OUT[1])", "Point(VAIO2.IN[4],WIN1.OUT[2])", "Point(VAIO2.IN[4],WIN4.OUT[1])", "Point(VAIO2.IN[4],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
+                        new MatrixControl { Label = "RL", CommandBases = { "Point(VAIO2.IN[5],WIN1.OUT[1])", "Point(VAIO2.IN[5],WIN4.OUT[1])" }, InitialGains = { 0.0, 0.0 } },
+                        new MatrixControl { Label = "RR", CommandBases = { "Point(VAIO2.IN[6],WIN1.OUT[2])", "Point(VAIO2.IN[6],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0 } }
                     }
                 },
                 new Preset {
@@ -163,13 +164,20 @@ namespace YZ_Volume
         private Preset ParsePresetFromXml(string filePath)
         {
             XDocument doc = XDocument.Load(filePath);
+            if (doc.Root == null) throw new InvalidDataException("XML file is empty or invalid.");
             var preset = new Preset { Name = doc.Descendants("PresetName").FirstOrDefault()?.Value.Trim() ?? Path.GetFileNameWithoutExtension(filePath) };
 
             var inputMap = new Dictionary<string, string> { { "1", "FL" }, { "2", "FR" }, { "3", "C" }, { "4", "S" }, { "5", "RL" }, { "6", "RR" } };
 
             var groupedPoints = doc.Descendants("PresetPoint")
-                .Where(p => p.Attribute("in") != null && inputMap.ContainsKey(p.Attribute("in").Value))
-                .GroupBy(p => p.Attribute("in").Value);
+                .Where(p => {
+                    // --- THE FIX ---
+                    // Read the attribute value into a variable first
+                    var inAttribute = p.Attribute("in");
+                    // Now the compiler knows 'inValue' is checked for null before being used
+                    return inAttribute != null && !string.IsNullOrEmpty(inAttribute.Value) && inputMap.ContainsKey(inAttribute.Value);
+                })
+                .GroupBy(p => p.Attribute("in")!.Value);
 
             foreach (var group in groupedPoints.OrderBy(g => g.Key))
             {
@@ -192,6 +200,8 @@ namespace YZ_Volume
             var saveFileDialog = new Microsoft.Win32.SaveFileDialog { FileName = $"{preset.Name}.xml", Filter = "XML Files (*.xml)|*.xml" };
             if (saveFileDialog.ShowDialog() != true) return;
             var doc = new XDocument(new XElement("VBAudioMatrixPresetPatch"));
+            if (doc.Root == null) return;
+
             int totalPoints = preset.Controls.Sum(c => c.CommandBases.Count);
             doc.Root.Add(new XElement("PresetName", new XAttribute("nbzone", "1"), new XAttribute("nbpoint", totalPoints), preset.Name));
             doc.Root.Add(new XElement("PresetComment"));
@@ -302,27 +312,17 @@ namespace YZ_Volume
 
         private void SendVbanTestCommand(string command)
         {
-            string ipAddress = VbanIpTextBox.Text;
-            if (!int.TryParse(VbanPortTextBox.Text, out int port))
+            // Check if the client was passed in and is not null
+            if (_vbanClient != null)
             {
-                System.Windows.MessageBox.Show("Invalid Port number.", "VBAN Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                _vbanClient.SendCommand(command);
             }
-
-            MatrixUdpClient? testClient = null;
-            try
+            else
             {
-                testClient = new MatrixUdpClient(ipAddress, port, "Command1");
-                testClient.SendCommand(command);
-            }
-            catch (Exception ex)
-            {
-                System.Windows.MessageBox.Show($"Failed to send VBAN command.\n\nError: {ex.Message}", "VBAN Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                testClient?.StopListener();
+                // If VBAN is off, the client will be null. Show an error.
+                System.Windows.MessageBox.Show("VBAN is not enabled in the main application.", "VBAN Error", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
+
     }
 }
