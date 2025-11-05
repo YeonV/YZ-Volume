@@ -14,6 +14,7 @@ using System.Windows.Media;
 using System.Xml.Linq;
 using CheckBox = System.Windows.Controls.CheckBox;
 using TextBox = System.Windows.Controls.TextBox;
+using AudioSwitcher.AudioApi.CoreAudio;
 
 namespace YZ_Volume
 {
@@ -38,6 +39,24 @@ namespace YZ_Volume
             VbanIpTextBox.Text = Properties.Settings.Default.VbanIpAddress;
             VbanPortTextBox.Text = Properties.Settings.Default.VbanPort.ToString();
             VbanToggleButton.Click += (s, e) => UpdateVbanTestPanelVisibility();
+
+            PopulatePlaybackDevices();
+
+            // Load saved state
+            AutoSelectDeviceCheckBox.IsChecked = Properties.Settings.Default.AutoSelectDeviceEnabled;
+            string savedDeviceId = Properties.Settings.Default.DefaultDeviceId;
+
+            // Find and select the saved device in the ComboBox
+            foreach (ComboBoxItem item in DefaultDeviceComboBox.Items)
+            {
+                if (item.Tag.ToString() == savedDeviceId)
+                {
+                    DefaultDeviceComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+
+            // Set initial visibility
             UpdateVbanTestPanelVisibility();
         }
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
@@ -55,7 +74,7 @@ namespace YZ_Volume
             }
         }
 
-        public List<Preset> GetDefaultPresets()
+        public static List<Preset> GetDefaultPresets()
         {
             // Now we must include the VbanIndex for our defaults
             return new List<Preset> {
@@ -95,6 +114,29 @@ namespace YZ_Volume
             };
         }
 
+        private void PopulatePlaybackDevices()
+        {
+            DefaultDeviceComboBox.Items.Clear();
+            var controller = new CoreAudioController();
+            var playbackDevices = controller.GetPlaybackDevices(AudioSwitcher.AudioApi.DeviceState.Active);
+
+            foreach (var device in playbackDevices)
+            {
+                // We'll store the Name and the ID (GUID) for each device
+                var item = new ComboBoxItem
+                {
+                    Content = device.FullName,
+                    Tag = device.Id.ToString() // Store the ID in the Tag for later
+                };
+                DefaultDeviceComboBox.Items.Add(item);
+            }
+        }
+
+        private void AutoSelectDeviceCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            DefaultDeviceComboBox.Visibility = AutoSelectDeviceCheckBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         private void UpdatePresetManagerUI()
         {
             PresetManagerPanel.Children.Clear();
@@ -114,8 +156,8 @@ namespace YZ_Volume
                 var indexTextBox = new TextBox { Text = preset.VbanIndex.ToString(), Width = 40, Margin = new Thickness(5, 0, 5, 0) };
                 _presetIndexTextBoxes[preset] = indexTextBox; // Track it
 
-                var exportButton = new System.Windows.Controls.Button { Content = "\uE896", Style = (Style)FindResource("TestIconButtonStyle"), ToolTip = "Export to XML" };
-                var deleteButton = new System.Windows.Controls.Button { Content = "\uE74D", Style = (Style)FindResource("TestIconButtonStyle"), ToolTip = "Delete", Margin = new Thickness(5, 0, 0, 0) };
+                var exportButton = new System.Windows.Controls.Button { Content = "\uE896", Style = (Style)FindResource("TestIconButtonStyle"), ToolTip = "Export to XML", Width = 50 };
+                var deleteButton = new System.Windows.Controls.Button { Content = "\uE74D", Style = (Style)FindResource("TestIconButtonStyle"), ToolTip = "Delete", Margin = new Thickness(5, 0, 0, 0), Width = 50 };
                 var currentPreset = preset;
                 exportButton.Click += (s, e) => ExportPreset(currentPreset);
                 deleteButton.Click += (s, e) => {
@@ -256,6 +298,16 @@ namespace YZ_Volume
                 }
             }
             // --- END NEW ---
+
+            Properties.Settings.Default.AutoSelectDeviceEnabled = AutoSelectDeviceCheckBox.IsChecked ?? false;
+            if (DefaultDeviceComboBox.SelectedItem is ComboBoxItem selectedItem)
+            {
+                Properties.Settings.Default.DefaultDeviceId = selectedItem.Tag.ToString();
+            }
+            else
+            {
+                Properties.Settings.Default.DefaultDeviceId = string.Empty;
+            }
 
             Properties.Settings.Default.PresetsJson = JsonConvert.SerializeObject(_presets);
             Properties.Settings.Default.Save();

@@ -129,5 +129,29 @@ namespace YZ_Volume.Properties {
                 this["LastSelectedPresetName"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool AutoSelectDeviceEnabled {
+            get {
+                return ((bool)(this["AutoSelectDeviceEnabled"]));
+            }
+            set {
+                this["AutoSelectDeviceEnabled"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DefaultDeviceId {
+            get {
+                return ((string)(this["DefaultDeviceId"]));
+            }
+            set {
+                this["DefaultDeviceId"] = value;
+            }
+        }
     }
 }

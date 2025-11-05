@@ -28,27 +28,66 @@
                 <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}"/>
                 <Setter Property="Padding" Value="5"/>
             </Style>
-            <Style TargetType="ContextMenu">
+            <Style TargetType="{x:Type ContextMenu}">
                 <Setter Property="Background" Value="{StaticResource BackgroundBrush}"/>
                 <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
                 <Setter Property="BorderThickness" Value="1"/>
-            </Style>
-            <Style TargetType="MenuItem">
-                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                <Setter Property="HasDropShadow" Value="True"/>
+                <!-- We will style the popup that hosts this menu -->
                 <Setter Property="Template">
                     <Setter.Value>
-                        <ControlTemplate TargetType="MenuItem">
-                            <Border x:Name="Border" Background="Transparent" BorderThickness="0" Padding="12,8">
-                                <ContentPresenter ContentSource="Header"/>
+                        <ControlTemplate TargetType="{x:Type ContextMenu}">
+                            <!-- This is the key: we define a style for the Popup inside the template's resources -->
+                            <ControlTemplate.Resources>
+                                <Style TargetType="{x:Type Popup}">
+                                    <Setter Property="AllowsTransparency" Value="True"/>
+                                </Style>
+                            </ControlTemplate.Resources>
+                            <Border x:Name="Border" 
+                                Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                                <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style TargetType="{x:Type MenuItem}">
+                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Padding" Value="8"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type MenuItem}">
+                            <Border x:Name="Border" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="24"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- This is the dedicated space for the icon -->
+                                    <ContentPresenter Grid.Column="0" ContentSource="Icon" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                                    <!-- This is for the text -->
+                                    <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center" Margin="5,0,0,0"/>
+                                </Grid>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsHighlighted" Value="True">
-                                    <Setter TargetName="Border" Property="Background" Value="{StaticResource ControlMouseOverBrush}"/>
+                                    <Setter Property="Background" Value="{StaticResource ControlMouseOverBrush}"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
+            </Style>
+            <Style x:Key="MenuSeparatorStyle" TargetType="Separator">
+                <Setter Property="Background" Value="{StaticResource BorderBrush}"/>
+                <Setter Property="Height" Value="1"/>
+                <Setter Property="Margin" Value="4,5"/>
             </Style>
             <Style TargetType="{x:Type ComboBox}">
                 <Setter Property="Background" Value="Transparent"/>
@@ -267,7 +306,8 @@
                         <Setter Property="Background" Value="{StaticResource ControlMouseOverBrush}"/>
                     </Trigger>
                     <Trigger Property="IsChecked" Value="True">
-                        <Setter Property="Background" Value="#800000"/>
+                        <Setter Property="Background" Value="#003869" />
+                        <Setter Property="Foreground" Value="#000000"/>
                     </Trigger>
                 </Style.Triggers>
             </Style>

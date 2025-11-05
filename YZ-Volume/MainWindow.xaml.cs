@@ -15,6 +15,7 @@ using MouseEventArgs = System.Windows.Forms.MouseEventArgs;
 using NotifyIcon = System.Windows.Forms.NotifyIcon;
 using Slider = System.Windows.Controls.Slider;
 using TextBlock = System.Windows.Controls.TextBlock;
+using AudioSwitcher.AudioApi.CoreAudio;
 
 namespace YZ_Volume
 {
@@ -44,18 +45,38 @@ namespace YZ_Volume
         {
             _notifyIcon = new NotifyIcon();
             _notifyIcon.Text = "YZ-Volume";
+
             var iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/icon.ico"))?.Stream;
             if (iconStream != null) _notifyIcon.Icon = new System.Drawing.Icon(iconStream);
+
             _notifyIcon.Visible = true;
+
+            // Create and attach the WPF ContextMenu
             var contextMenu = new ContextMenu();
-            var settingsItem = new MenuItem { Header = "Settings..." };
+
+            // --- NEW: Create MenuItems with Icons ---
+            var settingsItem = new MenuItem
+            {
+                Header = "Settings...",
+                Icon = new TextBlock { Text = "\uE713", FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"), VerticalAlignment = VerticalAlignment.Center }
+            };
             settingsItem.Click += (s, e) => OpenSettingsWindow();
-            var exitItem = new MenuItem { Header = "Exit" };
+
+            var exitItem = new MenuItem
+            {
+                Header = "Exit",
+                Icon = new TextBlock { Text = "\uE8BB", FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"), VerticalAlignment = VerticalAlignment.Center }
+            };
             exitItem.Click += (s, e) => System.Windows.Application.Current.Shutdown();
+
             contextMenu.Items.Add(settingsItem);
+            contextMenu.Items.Add(new Separator { Style = (Style)FindResource("MenuSeparatorStyle") });
             contextMenu.Items.Add(exitItem);
-            _notifyIcon.MouseClick += (sender, args) => {
+
+            _notifyIcon.MouseClick += (sender, args) =>
+            {
                 if (args.Button == MouseButtons.Left)
+
                 {
                     if (IsVisible) Hide();
                     else
@@ -69,6 +90,7 @@ namespace YZ_Volume
                 }
                 else if (args.Button == MouseButtons.Right)
                 {
+                    contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
                     contextMenu.IsOpen = true;
                     Activate();
                 }
@@ -77,6 +99,7 @@ namespace YZ_Volume
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
+            AutoSetDefaultDevice();
             InitializeVbanClient();
 
             if (Properties.Settings.Default.VbanEnabled && _presets.Any())
@@ -93,6 +116,35 @@ namespace YZ_Volume
                 }
             }
             else { RefreshAllControls(); }
+        }
+
+        private void AutoSetDefaultDevice()
+        {
+            if (Properties.Settings.Default.AutoSelectDeviceEnabled &&
+                !string.IsNullOrEmpty(Properties.Settings.Default.DefaultDeviceId))
+            {
+                try
+                {
+                    var controller = new CoreAudioController();
+                    var deviceId = new Guid(Properties.Settings.Default.DefaultDeviceId);
+
+                    // --- THIS IS THE FIX ---
+                    // 1. Get the full device object from the controller using the ID.
+                    var deviceToSet = controller.GetDevice(deviceId);
+
+                    // 2. Pass the device object (not the ID) to the SetDefaultDevice method.
+                    if (deviceToSet != null)
+                    {
+                        controller.SetDefaultDevice(deviceToSet);
+                        System.Diagnostics.Debug.WriteLine($"Successfully auto-selected default device: {deviceToSet.FullName}");
+                    }
+                    // --- END OF FIX ---
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to auto-select default device: {ex.Message}");
+                }
+            }
         }
 
         private void InitializeVbanClient()
@@ -128,8 +180,7 @@ namespace YZ_Volume
             string json = Properties.Settings.Default.PresetsJson;
             if (string.IsNullOrEmpty(json))
             {
-                var settingsWindow = new SettingsWindow(null);
-                var defaultPresets = settingsWindow.GetDefaultPresets();
+                var defaultPresets = SettingsWindow.GetDefaultPresets();
                 Properties.Settings.Default.PresetsJson = JsonConvert.SerializeObject(defaultPresets);
                 Properties.Settings.Default.Save();
                 return defaultPresets;
