@@ -74,33 +74,108 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
+                                        <!-- VBAN Toggle -->
+                                        <ColumnDefinition Width="Auto"/>
+                                        <!-- Sync Button -->
                                         <ColumnDefinition Width="*"/>
+                                        <!-- Spacer -->
                                         <ColumnDefinition Width="Auto"/>
+                                        <!-- IP Label -->
                                         <ColumnDefinition Width="Auto"/>
+                                        <!-- IP TextBox -->
+                                        <ColumnDefinition Width="Auto"/>
+                                        <!-- Port Label -->
+                                        <ColumnDefinition Width="Auto"/>
+                                        <!-- Port TextBox -->
+                                        <ColumnDefinition Width="40"/>
+                                        <!-- Show Console Toggle -->
                                     </Grid.ColumnDefinitions>
-                                    <ToggleButton x:Name="VbanToggleButton" Content="VBAN" Width="85" Style="{StaticResource PrimaryToggleButtonStyle}"/>
-                                    <TextBlock Grid.Column="1" Text="IP Address:" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="10,0,5,0"/>
-                                    <TextBox x:Name="VbanIpTextBox" Grid.Column="2" Width="100"/>
-                                    <TextBlock Grid.Column="3" Text="Port:" VerticalAlignment="Center" Margin="10,0,5,0"/>
-                                    <TextBox x:Name="VbanPortTextBox" Grid.Column="4" Width="60"/>
+                                    <ToggleButton Grid.Column="0" x:Name="VbanToggleButton" Content="VBAN" Width="85" Style="{StaticResource PrimaryToggleButtonStyle}"/>
+
+                                    <Button Grid.Column="1" x:Name="SyncButton" Click="SyncPresets_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="5,0,0,0" Width="60" ToolTip="Silently sync all presets from the live Matrix state">
+                                        <Grid>
+                                            <TextBlock x:Name="SyncButtonText" Text="Sync" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="SyncButtonSpinner" Text="&#xE895;" FontFamily="Segoe Fluent Icons" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                                <TextBlock.RenderTransform>
+                                                    <RotateTransform/>
+                                                </TextBlock.RenderTransform>
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <Trigger Property="Visibility" Value="Visible">
+                                                                <Trigger.EnterActions>
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                                                         From="0" To="360" Duration="0:0:1.5" RepeatBehavior="Forever"/>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </Trigger.EnterActions>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Button>
+
+                                    <TextBlock Grid.Column="3" Text="IP:" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="10,0,5,0"/>
+                                    <TextBox x:Name="VbanIpTextBox" Grid.Column="4" Width="90"/>
+                                    <TextBox x:Name="VbanPortTextBox" Grid.Column="6" Width="60" Margin="0,0,10,0"/>
+
+                                    <!-- NEW: "Show Console" Toggle Button -->
+                                    <ToggleButton Grid.Column="7" x:Name="ShowConsoleToggleButton" 
+                                      Content="&#xE713;" 
+                                      Style="{StaticResource IconToggleButtonStyle}" 
+                                      Margin="0,0,0,0" 
+                                      ToolTip="Show/Hide VBAN Console"
+                                      Width="40"/>
                                 </Grid>
                             </Border>
 
                             <!-- VBAN Test & Management Section -->
                             <StackPanel x:Name="VbanTestPanel" Margin="0,15,0,0">
+                                <!-- ### THIS IS THE PRESET MANAGER SECTION THAT WAS MISSING ### -->
                                 <TextBlock Text="Preset Manager" FontWeight="Bold" Margin="0,20,0,10"/>
                                 <StackPanel x:Name="PresetManagerPanel"/>
-                                <Button Content="Import Preset from XML..." Click="ImportPreset_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="0,10,0,0" Height="30"/>
+                                <Button Content="Import Preset from XML..." Click="ImportPreset_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="0,10,0,40" Height="30" />
 
-
-                                <TextBlock Text="VBAN Tester" FontWeight="Bold" Margin="0,20,0,10"/>
+                                <Grid>
+                                    <TextBlock Text="VBAN Console" FontWeight="Bold" Margin="0,0,0,10" VerticalAlignment="Center"/>
+                                    <Button Content="&#xE74D;" 
+                                    Style="{StaticResource TestIconButtonStyle}" 
+                                    HorizontalAlignment="Right" 
+                                    Click="ClearHistory_Click" 
+                                    Width="50"
+                                    Height="25"
+                                    ToolTip="Clear History"/>
+                                </Grid>
+                                <ListBox x:Name="HistoryListBox" Height="150" Margin="0,0,0,5" Background="#000000"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="50"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox x:Name="CustomCommandTextBox" Grid.Column="0" Text="PresetPatch[1].Gain = 0.0"/>
-                                    <Button Grid.Column="1" Content="&#xE724;" Click="SendCustomCommand_Click" Style="{StaticResource TestIconButtonStyle}" Margin="5,0,0,0" ToolTip="Send Command"/>
+                                    <TextBox x:Name="CustomCommandTextBox" Grid.Column="0" PreviewKeyDown="CustomCommandTextBox_PreviewKeyDown" Background="#000000"/>
+                                    <Button Grid.Column="1" Content="&#xE724;" Click="SendCustomCommand_Click" Style="{StaticResource TestIconButtonStyle}" Margin="5,0,0,0" Width="50" ToolTip="Send Command"/>
+                                </Grid>
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button Content="Version" Tag="Command.Version = ?" Click="PaletteButton_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,10,5" Height="25" Width="100" />
+                                    <Button Content="Engine" Tag="Command.Engine = ?" Click="PaletteButton_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,10,5" Height="25" Width="100" />
+                                    <Button Content="Preset Name" Tag="PresetPatch[1].Name = ?" Click="PaletteButton_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,10,5" Height="25" Width="100" />
+                                </WrapPanel>
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Button Grid.Column="0" Content="Run Diagnostics" Click="QueryAll_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,5,0"  Height="25" ToolTip="Run a full diagnostic scan and log to console"/>
+                                    <Button Grid.Column="1" Content="Import Live State" Click="GetLiveState_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="5,0,5,0"  Height="25" ToolTip="Import the current grid as a new preset"/>
+
+                                    <!-- ### NEW BUTTON ### -->
+                                    <Button Grid.Column="2" Content="Sync Presets" Click="SyncPresets_Click" Style="{StaticResource PrimaryButtonStyle}" Margin="5,0,0,0"  Height="25" ToolTip="Silently sync all presets from the live Matrix state"/>
                                 </Grid>
                             </StackPanel>
                         </StackPanel>

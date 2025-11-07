@@ -6,16 +6,17 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using AudioSwitcher.AudioApi.CoreAudio; // RESTORED
+
 // Aliases
 using Grid = System.Windows.Controls.Grid;
+using Slider = System.Windows.Controls.Slider;
+using TextBlock = System.Windows.Controls.TextBlock;
+using Button = System.Windows.Controls.Button;
 using MouseButtons = System.Windows.Forms.MouseButtons;
 using MouseEventArgs = System.Windows.Forms.MouseEventArgs;
 using NotifyIcon = System.Windows.Forms.NotifyIcon;
-using Slider = System.Windows.Controls.Slider;
-using TextBlock = System.Windows.Controls.TextBlock;
-using AudioSwitcher.AudioApi.CoreAudio;
 
 namespace YZ_Volume
 {
@@ -24,6 +25,7 @@ namespace YZ_Volume
         private NotifyIcon? _notifyIcon;
         private MatrixUdpClient? _matrixClient;
         private List<Preset> _presets = new();
+        // RESTORED
         private Dictionary<string, Slider> _matrixChannelSliders = new();
         private Dictionary<Slider, RoutedPropertyChangedEventHandler<double>> _sliderEventHandlers = new();
 
@@ -34,7 +36,6 @@ namespace YZ_Volume
             Deactivated += OnDeactivated;
             Loaded += OnLoaded;
             InitializeNotifyIcon();
-
             MasterVolumeSlider.ValueChanged += MasterVolumeSlider_ValueChanged;
             MasterMuteButton.Click += MasterMuteButton_Click;
             MasterNudgeDownButton.Click += MasterNudgeDownButton_Click;
@@ -101,7 +102,6 @@ namespace YZ_Volume
         {
             AutoSetDefaultDevice();
             InitializeVbanClient();
-
             if (Properties.Settings.Default.VbanEnabled && _presets.Any())
             {
                 string lastName = Properties.Settings.Default.LastSelectedPresetName;
@@ -116,35 +116,6 @@ namespace YZ_Volume
                 }
             }
             else { RefreshAllControls(); }
-        }
-
-        private void AutoSetDefaultDevice()
-        {
-            if (Properties.Settings.Default.AutoSelectDeviceEnabled &&
-                !string.IsNullOrEmpty(Properties.Settings.Default.DefaultDeviceId))
-            {
-                try
-                {
-                    var controller = new CoreAudioController();
-                    var deviceId = new Guid(Properties.Settings.Default.DefaultDeviceId);
-
-                    // --- THIS IS THE FIX ---
-                    // 1. Get the full device object from the controller using the ID.
-                    var deviceToSet = controller.GetDevice(deviceId);
-
-                    // 2. Pass the device object (not the ID) to the SetDefaultDevice method.
-                    if (deviceToSet != null)
-                    {
-                        controller.SetDefaultDevice(deviceToSet);
-                        System.Diagnostics.Debug.WriteLine($"Successfully auto-selected default device: {deviceToSet.FullName}");
-                    }
-                    // --- END OF FIX ---
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to auto-select default device: {ex.Message}");
-                }
-            }
         }
 
         private void InitializeVbanClient()
@@ -180,10 +151,7 @@ namespace YZ_Volume
             string json = Properties.Settings.Default.PresetsJson;
             if (string.IsNullOrEmpty(json))
             {
-                var defaultPresets = SettingsWindow.GetDefaultPresets();
-                Properties.Settings.Default.PresetsJson = JsonConvert.SerializeObject(defaultPresets);
-                Properties.Settings.Default.Save();
-                return defaultPresets;
+                return new List<Preset>();
             }
             return JsonConvert.DeserializeObject<List<Preset>>(json) ?? new List<Preset>();
         }
@@ -264,32 +232,19 @@ namespace YZ_Volume
             deviceGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var muteButton = new System.Windows.Controls.Primitives.ToggleButton { Style = (Style)FindResource("MuteToggleButtonStyle"), VerticalAlignment = VerticalAlignment.Center };
+
+            // The Label now comes DIRECTLY from the synced Preset data.
             var nameLabel = new TextBlock { Text = currentControl.Label, Foreground = System.Windows.Media.Brushes.WhiteSmoke, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis };
 
-            double initialGain = currentControl.InitialGains.FirstOrDefault();
-            var volumeSlider = new Slider
-            {
-                Minimum = -100,
-                Maximum = 20,
-                Value = initialGain,
-                Style = (Style)FindResource("UltimateSliderStyle"),
-                IsSnapToTickEnabled = true,
-                TickFrequency = 1,
-                VerticalAlignment = VerticalAlignment.Center,
-                Tag = initialGain
-            };
+            var volumeSlider = new Slider { Minimum = -100, Maximum = 0, Value = currentControl.InitialGains.FirstOrDefault(), Style = (Style)FindResource("UltimateSliderStyle"), IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
+            var nudgeDownButton = new Button { Content = "-", Style = (Style)FindResource("NudgeButtonStyle"), Margin = new Thickness(5, 0, 2, 0), ToolTip = "Nudge Gain -1 dB" };
+            var nudgeUpButton = new Button { Content = "+", Style = (Style)FindResource("NudgeButtonStyle"), Margin = new Thickness(2, 0, 0, 0), ToolTip = "Nudge Gain +1 dB" };
 
-            var nudgeDownButton = new System.Windows.Controls.Button { Content = "-", Style = (Style)FindResource("NudgeButtonStyle"), Margin = new Thickness(5, 0, 2, 0), ToolTip = "Nudge Gain -1 dB" };
-            var nudgeUpButton = new System.Windows.Controls.Button { Content = "+", Style = (Style)FindResource("NudgeButtonStyle"), Margin = new Thickness(2, 0, 0, 0), ToolTip = "Nudge Gain +1 dB" };
-
-            RoutedPropertyChangedEventHandler<double> valueChangedHandler = (sender, args) => {
+            volumeSlider.ValueChanged += (sender, args) => {
                 var commands = new List<string>();
                 foreach (var commandBase in currentControl.CommandBases) { commands.Add($"{commandBase}.dBGain = {((int)args.NewValue)}"); }
                 SendVbanCommand(string.Join(";", commands));
             };
-            volumeSlider.ValueChanged += valueChangedHandler;
-            _sliderEventHandlers[volumeSlider] = valueChangedHandler;
-
             muteButton.Click += (sender, args) => {
                 string muteValue = muteButton.IsChecked == true ? "1" : "0";
                 var commands = new List<string>();
@@ -306,11 +261,6 @@ namespace YZ_Volume
                 foreach (var commandBase in currentControl.CommandBases) { commands.Add($"{commandBase}.dBGain += 1.0"); }
                 SendVbanCommand(string.Join(";", commands));
             };
-
-            if (currentControl.CommandBases.Any())
-            {
-                _matrixChannelSliders[currentControl.CommandBases.First()] = volumeSlider;
-            }
 
             Grid.SetColumn(muteButton, 0);
             Grid.SetColumn(nameLabel, 1);
@@ -367,12 +317,7 @@ namespace YZ_Volume
             if (preset == null) return;
             if (sendCommands && _matrixClient != null)
             {
-                int commandIndex = preset.VbanIndex;
-                SendVbanCommand("Command.ResetGrid");
-                System.Threading.Thread.Sleep(50);
-                SendVbanCommand($"PresetPatch[{commandIndex}].Apply");
-                System.Threading.Thread.Sleep(50);
-                SendVbanCommand($"PresetPatch[{commandIndex}].Select");
+                SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Recall;PresetPatch[{preset.VbanIndex}].Select");
             }
             RefreshAllControls();
             Properties.Settings.Default.LastSelectedPresetName = preset.Name;
@@ -383,7 +328,7 @@ namespace YZ_Volume
 
         private void OpenSettingsWindow()
         {
-            var settingsWindow = new SettingsWindow(_matrixClient) { Owner = this };
+            var settingsWindow = new SettingsWindow() { Owner = this };
             if (settingsWindow.ShowDialog() == true)
             {
                 InitializeVbanClient();
@@ -437,13 +382,28 @@ namespace YZ_Volume
         }
 
         private void OnDeactivated(object? sender, EventArgs e) => Hide();
-        protected override void OnClosing(CancelEventArgs e)
-        {
-            e.Cancel = true;
-            Hide();
-            base.OnClosing(e);
-        }
+        protected override void OnClosing(CancelEventArgs e) { e.Cancel = true; Hide(); base.OnClosing(e); }
 
-        private void VbanClient_OnStateUpdated(VoicemeeterState newState) { /* Placeholder */ }
+        private void AutoSetDefaultDevice()
+        {
+            if (Properties.Settings.Default.AutoSelectDeviceEnabled && !string.IsNullOrEmpty(Properties.Settings.Default.DefaultDeviceId))
+            {
+                try
+                {
+                    var controller = new CoreAudioController();
+                    var deviceId = new Guid(Properties.Settings.Default.DefaultDeviceId);
+                    var deviceToSet = controller.GetDevice(deviceId);
+                    if (deviceToSet != null)
+                    {
+                        controller.SetDefaultDevice(deviceToSet);
+                        System.Diagnostics.Debug.WriteLine($"Successfully auto-selected default device: {deviceToSet.FullName}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to auto-select default device: {ex.Message}");
+                }
+            }
+        }
     }
 }
