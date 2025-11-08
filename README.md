@@ -1,6 +1,5 @@
-# YZ-Volume 0.0.6
-
-### in short:
+[![creator](https://img.shields.io/badge/CREATOR-Yeon-blue.svg?logo=github&logoColor=white)](https://github.com/YeonV) [![creator](https://img.shields.io/badge/A.K.A-Blade-darkred.svg?logo=github&logoColor=white)](https://github.com/YeonV)
+<h1><img width="40" height="40" alt="YZ-Volume-Logo" src="https://github.com/user-attachments/assets/b0902573-34d1-4875-8a80-f34691738e05" align="top" />&nbsp;YZ-Volume</h1>
 
 Tray-App to control the volume of selectable audio devices.
 Bonus: VB-audio-Matrix integration
@@ -10,7 +9,7 @@ Bonus: VB-audio-Matrix integration
 <details>
    <summary>Settings Page</summary>   
    
-   <img width="917" height="764" alt="image" src="https://github.com/user-attachments/assets/0bb3a22e-26f9-4340-9ffa-9d28047fff43" />
+   <img width="927" height="1346" alt="image" src="https://github.com/user-attachments/assets/aad78c0e-8119-4f11-9b7b-84fc1b797f41" />
 </details>
 
 <details>
@@ -39,11 +38,6 @@ This application was built to solve the workflow limitations of standard Windows
     *   **Dynamic Slider Generation:** The UI automatically rebuilds itself to show the specific channel sliders relevant to your active preset.
     *   **Multi-Crosspoint Control:** A single slider can control the gain of multiple crosspoints simultaneously.
     *   **Absolute & Relative Control:** Use the main slider to set absolute `dBGain` values, or use the `+` / `-` buttons to nudge the gain of all associated crosspoints relatively, preserving your mix.
-*   **Powerful Preset Manager:**
-    *   **Import:** Import presets directly from VB-Audio Matrix's native `.xml` files.
-    *   **Export:** Export your configured presets back to `.xml` for backup or sharing.
-    *   **Manage:** Add, delete, and re-order your library of presets.
-    *   **Ships with Defaults:** Comes pre-configured with three powerful default presets (PC 5.1, PC 2.0, Beamer 5.1).
 *   **Highly Configurable:**
     *   Choose exactly which Windows devices and Matrix sliders are visible.
     *   Assign custom, user-friendly names to all devices.
@@ -73,7 +67,6 @@ This application was built to solve the workflow limitations of standard Windows
 3.  **VBAN Integration (Optional):**
     *   Toggle the **VBAN** button to ON.
     *   Ensure the IP Address and Port match your VB-Audio Matrix VBAN settings (default is `127.0.0.1` and `6980`).
-    *   Use the **Preset Manager** to import your custom `.xml` preset files or manage the defaults. Make sure to assign the correct **VBAN Index** for each preset, which corresponds to its position in the Matrix UI (e.g., `1` for `PresetPatch[1]`).
 4.  Click **Save**. Your main widget is now configured and ready to use.
 
 ---
