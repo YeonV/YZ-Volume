@@ -13,6 +13,10 @@
             <SolidColorBrush x:Key="ControlMouseOverBrush" Color="#555"/>
             <SolidColorBrush x:Key="AccentBrush" Color="White"/>
 
+            <Style TargetType="Button">
+                <Setter Property="Cursor" Value="Hand"/>
+            </Style>
+            
             <!-- IMPLICIT (AUTOMATIC) STYLES -->
             <Style TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
@@ -228,13 +232,12 @@
                 </Setter>
             </Style>
 
-            <Style x:Key="SettingsIconButtonStyle" TargetType="Button">
+            <Style x:Key="SettingsIconButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                 <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
                 <Setter Property="FontSize" Value="16" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Foreground" Value="#AAA" />
                 <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="Cursor" Value="Hand" />
                 <Setter Property="Content" Value="&#xE713;" />
                 <Setter Property="Template">
                     <Setter.Value>
@@ -252,7 +255,7 @@
                 </Style.Triggers>
             </Style>
 
-            <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+            <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                 <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}"/>
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
                 <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
@@ -277,6 +280,7 @@
                 <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}"/>
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
                 <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="Padding" Value="10,5"/>
                 <Setter Property="ContentTemplate">
                     <Setter.Value>
@@ -362,7 +366,6 @@
             <Style x:Key="TestIconButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
                 <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
                 <Setter Property="FontSize" Value="16" />
-                <Setter Property="Cursor" Value="Hand" />
             </Style>
 
             <!-- NEW STYLE for the small +/- nudge buttons -->
@@ -478,6 +481,32 @@
             <Style x:Key="FluentIconTextStyle" TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+            <Style x:Key="BorderlessIconButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="#AAA"/>
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" Padding="4">
+                                <TextBlock Text="{TemplateBinding Content}" 
+                                       FontFamily="{TemplateBinding FontFamily}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Foreground" Value="White"/>
+                    </Trigger>
+                </Style.Triggers>
             </Style>
         </ResourceDictionary>
     </Application.Resources>

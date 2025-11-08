@@ -23,8 +23,17 @@ using System.Diagnostics;
 
 namespace YZ_Volume
 {
-    public class DeviceInfo { public string Id { get; set; } public string Name { get; set; } public DataFlow Flow { get; set; } }
-    public class PlaybackDeviceInfo { public Guid Id { get; set; } public string Name { get; set; } }
+    public class DeviceInfo
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public DataFlow Flow { get; set; }
+    }
+    public class PlaybackDeviceInfo
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
 
     public partial class SettingsWindow : Window
     {
@@ -730,12 +739,16 @@ namespace YZ_Volume
             PresetConfigBorder.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
             MatrixConfigBorder.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
             SyncButton.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
-            ShowConsoleToggleButton.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
+            
+
 
             // Control visibility of the dev console itself
             bool isConsoleToggleVisible = ShowConsoleToggleButton.Visibility == Visibility.Visible;
             bool isConsoleToggleOn = ShowConsoleToggleButton.IsChecked == true;
-            VbanTestPanel.Visibility = (isConsoleToggleVisible && isConsoleToggleOn) ? Visibility.Visible : Visibility.Collapsed;
+            if (VbanTestPanel != null)
+            {
+                VbanTestPanel.Visibility = (isVbanEnabled && isConsoleToggleVisible && isConsoleToggleOn) ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
 
         private void StartConsoleListener()

@@ -1,4 +1,4 @@
-# YZ-Volume 0.0.5
+# YZ-Volume 0.0.6
 
 ### in short:
 

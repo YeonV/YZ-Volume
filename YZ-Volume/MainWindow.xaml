@@ -29,8 +29,7 @@
 
                 <Button Grid.Column="1" 
                         Content="&#xE72C;" 
-                        Style="{StaticResource TestIconButtonStyle}"
-                        Background="Transparent"
+                        Style="{StaticResource BorderlessIconButtonStyle}"
                         Margin="5,0,0,0"
                         Click="RefreshPreset_Click"
                         ToolTip="Reset to Preset Values"/>
