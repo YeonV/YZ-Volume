@@ -25,9 +25,9 @@ namespace YZ_Volume
         private NotifyIcon? _notifyIcon;
         private MatrixUdpClient? _matrixClient;
         private List<Preset> _presets = new();
-        // RESTORED
         private Dictionary<string, Slider> _matrixChannelSliders = new();
         private Dictionary<Slider, RoutedPropertyChangedEventHandler<double>> _sliderEventHandlers = new();
+        private DateTime _lastDeactivated;
 
         public MainWindow()
         {
@@ -36,6 +36,7 @@ namespace YZ_Volume
             Deactivated += OnDeactivated;
             Loaded += OnLoaded;
             InitializeNotifyIcon();
+
             MasterVolumeSlider.ValueChanged += MasterVolumeSlider_ValueChanged;
             MasterMuteButton.Click += MasterMuteButton_Click;
             MasterNudgeDownButton.Click += MasterNudgeDownButton_Click;
@@ -46,16 +47,11 @@ namespace YZ_Volume
         {
             _notifyIcon = new NotifyIcon();
             _notifyIcon.Text = "YZ-Volume";
-
             var iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/icon.ico"))?.Stream;
             if (iconStream != null) _notifyIcon.Icon = new System.Drawing.Icon(iconStream);
-
             _notifyIcon.Visible = true;
 
-            // Create and attach the WPF ContextMenu
             var contextMenu = new ContextMenu();
-
-            // --- NEW: Create MenuItems with Icons ---
             var settingsItem = new MenuItem
             {
                 Header = "Settings...",
@@ -74,14 +70,32 @@ namespace YZ_Volume
             contextMenu.Items.Add(new Separator { Style = (Style)FindResource("MenuSeparatorStyle") });
             contextMenu.Items.Add(exitItem);
 
-            _notifyIcon.MouseClick += (sender, args) =>
-            {
+            _notifyIcon.MouseClick += (sender, args) => {
                 if (args.Button == MouseButtons.Left)
-
                 {
-                    if (IsVisible) Hide();
+                    if ((DateTime.Now - _lastDeactivated).TotalMilliseconds < 100)
+                    {
+                        return;
+                    }
+                    if (IsVisible)
+                    {
+                        Hide();
+                        return;
+                    }
+
+                    // If the window is hidden, then proceed with the logic to show something.
+                    bool hasWindowsSliders = Properties.Settings.Default.VisibleDeviceIDs?.Count > 0;
+                    bool hasMatrixSliders = Properties.Settings.Default.VbanEnabled &&
+                                            (Properties.Settings.Default.VisiblePresetNames?.Count > 0 || PresetComboBox.HasItems);
+
+                    if (!hasWindowsSliders && !hasMatrixSliders)
+                    {
+                        // If config is empty, show settings.
+                        OpenSettingsWindow();
+                    }
                     else
                     {
+                        // Otherwise, show the main window.
                         Show();
                         var desktopWorkingArea = SystemParameters.WorkArea;
                         Left = desktopWorkingArea.Right - ActualWidth;
@@ -104,18 +118,44 @@ namespace YZ_Volume
             InitializeVbanClient();
             if (Properties.Settings.Default.VbanEnabled && _presets.Any())
             {
-                string lastName = Properties.Settings.Default.LastSelectedPresetName;
-                var lastPreset = _presets.FirstOrDefault(p => p.Name == lastName) ?? _presets.First();
-                int displayIndex = _presets.IndexOf(lastPreset);
+                string presetToLoad;
+                // Check if the auto-select feature is enabled and a preset is chosen
+                if (Properties.Settings.Default.AutoSelectPresetEnabled && !string.IsNullOrEmpty(Properties.Settings.Default.AutoSelectPresetName))
+                {
+                    presetToLoad = Properties.Settings.Default.AutoSelectPresetName;
+                }
+                else
+                {
+                    // Fallback to the last used preset
+                    presetToLoad = Properties.Settings.Default.LastSelectedPresetName;
+                }
+
+                var presetObject = _presets.FirstOrDefault(p => p.Name == presetToLoad) ?? _presets.First();
+                int displayIndex = -1;
+                for (int i = 0; i < PresetComboBox.Items.Count; i++)
+                {
+                    if (((ComboBoxItem)PresetComboBox.Items[i]).Tag.ToString() == presetObject.Name)
+                    {
+                        displayIndex = i;
+                        break;
+                    }
+                }
+
                 if (displayIndex != -1)
                 {
                     PresetComboBox.SelectionChanged -= PresetComboBox_SelectionChanged;
                     PresetComboBox.SelectedIndex = displayIndex;
                     PresetComboBox.SelectionChanged += PresetComboBox_SelectionChanged;
-                    ApplyPreset(lastPreset, false);
+
+                    // On startup, always apply the preset to sync the Matrix state
+                    ApplyPreset(presetObject, true);
                 }
             }
-            else { RefreshAllControls(); }
+            else
+            {
+                RefreshAllControls();
+            }
+
         }
 
         private void InitializeVbanClient()
@@ -123,10 +163,57 @@ namespace YZ_Volume
             if (Properties.Settings.Default.VbanEnabled)
             {
                 _presets = GetPresetsFromSettings();
+                var visiblePresetsSetting = Properties.Settings.Default.VisiblePresetNames;
+                var overrideNamesJson = Properties.Settings.Default.PresetNameOverridesJson;
+                var overrideNames = !string.IsNullOrEmpty(overrideNamesJson) ? JsonConvert.DeserializeObject<Dictionary<string, string>>(overrideNamesJson) ?? new Dictionary<string, string>() : new Dictionary<string, string>();
+
+                // If this is the first run, default to showing all presets
+                if (visiblePresetsSetting == null)
+                {
+                    visiblePresetsSetting = new System.Collections.Specialized.StringCollection();
+                    foreach (var p in _presets) { visiblePresetsSetting.Add(p.Name); }
+                }
+
+                var presetsToShow = _presets.Where(p => visiblePresetsSetting.Contains(p.Name)).ToList();
+
+                PresetComboBox.SelectionChanged -= PresetComboBox_SelectionChanged;
                 PresetComboBox.Items.Clear();
-                foreach (var preset in _presets) { PresetComboBox.Items.Add(preset.Name); }
-                PresetComboBox.Visibility = Visibility.Visible;
+                foreach (var preset in presetsToShow)
+                {
+                    string displayName = overrideNames.ContainsKey(preset.Name) && !string.IsNullOrWhiteSpace(overrideNames[preset.Name])
+                        ? overrideNames[preset.Name]
+                        : preset.Name;
+                    PresetComboBox.Items.Add(new ComboBoxItem { Content = displayName, Tag = preset.Name });
+                }
+                
+                // --- ### THE AUTO-SELECT LOGIC ### ---
+                string lastName = Properties.Settings.Default.LastSelectedPresetName;
+                int lastIndex = -1;
+                if (!string.IsNullOrEmpty(lastName))
+                {
+                    // Find the index of the last selected item in the *visible* list
+                    for (int i = 0; i < PresetComboBox.Items.Count; i++)
+                    {
+                        if (((ComboBoxItem)PresetComboBox.Items[i]).Tag.ToString() == lastName)
+                        {
+                            lastIndex = i;
+                            break;
+                        }
+                    }
+                }
+                
+                // If the last preset wasn't found (or it's the first run), and there are items to show, select the first one.
+                if (lastIndex == -1 && PresetComboBox.HasItems)
+                {
+                    lastIndex = 0;
+                }
+
+                PresetComboBox.SelectedIndex = lastIndex;
+                PresetComboBox.SelectionChanged += PresetComboBox_SelectionChanged;
+                
+                PresetComboBox.Visibility = PresetComboBox.HasItems ? Visibility.Visible : Visibility.Collapsed;
                 MasterSliderGrid.Visibility = Visibility.Visible;
+                
                 if (_matrixClient == null)
                 {
                     var settings = Properties.Settings.Default;
@@ -145,6 +232,7 @@ namespace YZ_Volume
                 }
             }
         }
+
 
         private List<Preset> GetPresetsFromSettings()
         {
@@ -208,20 +296,38 @@ namespace YZ_Volume
         {
             MatrixControlsPanel.Children.Clear();
             int presetIndex = PresetComboBox.SelectedIndex;
+
             if (_matrixClient == null || presetIndex < 0 || presetIndex >= _presets.Count)
             {
                 MatrixSeparator.Visibility = Visibility.Collapsed;
                 return;
             }
-            MatrixSeparator.Visibility = Visibility.Visible;
+
+            var visibleControls = Properties.Settings.Default.VisibleMatrixControls ?? new System.Collections.Specialized.StringCollection();
+            var overrideNamesJson = Properties.Settings.Default.MatrixControlOverridesJson;
+            var overrideNames = !string.IsNullOrEmpty(overrideNamesJson) ? JsonConvert.DeserializeObject<Dictionary<string, string>>(overrideNamesJson) ?? new Dictionary<string, string>() : new Dictionary<string, string>();
+
             var preset = _presets[presetIndex];
+            bool anyMatrixSlidersShown = false;
             foreach (var control in preset.Controls)
             {
-                AddMatrixControlToUI(control);
+                // Only add the slider if its label is in the visible list
+                if (visibleControls.Contains(control.Label))
+                {
+                    // Check for an override name
+                    string displayName = overrideNames.ContainsKey(control.Label) && !string.IsNullOrWhiteSpace(overrideNames[control.Label])
+                        ? overrideNames[control.Label]
+                        : control.Label;
+
+                    AddMatrixControlToUI(control, displayName);
+                    anyMatrixSlidersShown = true;
+                }
             }
+            MatrixSeparator.Visibility = anyMatrixSlidersShown ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private void AddMatrixControlToUI(MatrixControl control)
+
+        private void AddMatrixControlToUI(MatrixControl control, string displayName)
         {
             var currentControl = control;
             var deviceGrid = new Grid { Margin = new Thickness(0, 0, 0, 15) };
@@ -234,7 +340,7 @@ namespace YZ_Volume
             var muteButton = new System.Windows.Controls.Primitives.ToggleButton { Style = (Style)FindResource("MuteToggleButtonStyle"), VerticalAlignment = VerticalAlignment.Center };
 
             // The Label now comes DIRECTLY from the synced Preset data.
-            var nameLabel = new TextBlock { Text = currentControl.Label, Foreground = System.Windows.Media.Brushes.WhiteSmoke, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis };
+            var nameLabel = new TextBlock { Text = displayName, Foreground = System.Windows.Media.Brushes.WhiteSmoke, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis };
 
             var volumeSlider = new Slider { Minimum = -100, Maximum = 0, Value = currentControl.InitialGains.FirstOrDefault(), Style = (Style)FindResource("UltimateSliderStyle"), IsSnapToTickEnabled = true, TickFrequency = 1, VerticalAlignment = VerticalAlignment.Center };
             var nudgeDownButton = new Button { Content = "-", Style = (Style)FindResource("NudgeButtonStyle"), Margin = new Thickness(5, 0, 2, 0), ToolTip = "Nudge Gain -1 dB" };
@@ -328,7 +434,7 @@ namespace YZ_Volume
 
         private void OpenSettingsWindow()
         {
-            var settingsWindow = new SettingsWindow() { Owner = this };
+            var settingsWindow = new SettingsWindow();
             if (settingsWindow.ShowDialog() == true)
             {
                 InitializeVbanClient();
@@ -381,7 +487,12 @@ namespace YZ_Volume
             if (preset != null) SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain += 1.0");
         }
 
-        private void OnDeactivated(object? sender, EventArgs e) => Hide();
+        private void OnDeactivated(object? sender, EventArgs e)
+        {
+            // --- THE FIX: Record the time and then hide ---
+            _lastDeactivated = DateTime.Now;
+            Hide();
+        }
         protected override void OnClosing(CancelEventArgs e) { e.Cancel = true; Hide(); base.OnClosing(e); }
 
         private void AutoSetDefaultDevice()

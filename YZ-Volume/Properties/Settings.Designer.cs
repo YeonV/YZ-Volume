@@ -153,5 +153,75 @@ namespace YZ_Volume.Properties {
                 this["DefaultDeviceId"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        public global::System.Collections.Specialized.StringCollection VisibleMatrixControls {
+            get {
+                return ((global::System.Collections.Specialized.StringCollection)(this["VisibleMatrixControls"]));
+            }
+            set {
+                this["VisibleMatrixControls"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string MatrixControlOverridesJson {
+            get {
+                return ((string)(this["MatrixControlOverridesJson"]));
+            }
+            set {
+                this["MatrixControlOverridesJson"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        public global::System.Collections.Specialized.StringCollection VisiblePresetNames {
+            get {
+                return ((global::System.Collections.Specialized.StringCollection)(this["VisiblePresetNames"]));
+            }
+            set {
+                this["VisiblePresetNames"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string PresetNameOverridesJson {
+            get {
+                return ((string)(this["PresetNameOverridesJson"]));
+            }
+            set {
+                this["PresetNameOverridesJson"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool AutoSelectPresetEnabled {
+            get {
+                return ((bool)(this["AutoSelectPresetEnabled"]));
+            }
+            set {
+                this["AutoSelectPresetEnabled"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string AutoSelectPresetName {
+            get {
+                return ((string)(this["AutoSelectPresetName"]));
+            }
+            set {
+                this["AutoSelectPresetName"] = value;
+            }
+        }
     }
 }

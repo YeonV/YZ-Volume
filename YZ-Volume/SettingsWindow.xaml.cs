@@ -5,7 +5,6 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -13,23 +12,30 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml.Linq;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement.Window;
+using Brushes = System.Windows.Media.Brushes;
+using CheckBox = System.Windows.Controls.CheckBox;
+using TextBox = System.Windows.Controls.TextBox;
+using System.Diagnostics;
 
 namespace YZ_Volume
 {
     public partial class SettingsWindow : Window
     {
         private List<Preset> _presets = new();
-        private Dictionary<string, (System.Windows.Controls.CheckBox VisibiltyCheckBox, System.Windows.Controls.TextBox NameTextBox)> deviceControls = new();
-        private Dictionary<Preset, System.Windows.Controls.TextBox> _presetIndexTextBoxes = new();
+        private Dictionary<string, (CheckBox VisibiltyCheckBox, TextBox NameTextBox)> deviceControls = new();
+        private Dictionary<Preset, TextBox> _presetIndexTextBoxes = new();
         private MatrixUdpClient? _consoleVbanClient;
         private List<string> _sentHistory = new();
         private int _historyIndex = -1;
-        private bool _isWaitingForConfigFile = false;
         private bool _isConsoleSilent = false;
+        // --- NEW: To track the new config UI ---
+        private Dictionary<string, (CheckBox Visibility, TextBox OverrideName)> _matrixConfigControls = new();
+        private bool _isWaitingForConfigFile = false;
+        private Dictionary<string, (ToggleButton Visibility, TextBox OverrideName)> _presetConfigControls = new();
 
         public SettingsWindow()
         {
@@ -38,19 +44,34 @@ namespace YZ_Volume
             LoadAndSeedPresets();
             LoadDevices();
             UpdatePresetManagerUI();
+            PopulateMatrixSliderConfigUI(); // NEW: Populate the new section
+            PopulatePresetConfigUI();
+
             VbanToggleButton.IsChecked = Properties.Settings.Default.VbanEnabled;
             VbanIpTextBox.Text = Properties.Settings.Default.VbanIpAddress;
             VbanPortTextBox.Text = Properties.Settings.Default.VbanPort.ToString();
-            VbanToggleButton.Click += (s, e) => {
-                UpdateVbanTestPanelVisibility();
-                if (VbanToggleButton.IsChecked == true) StartConsoleListener();
-                else StopConsoleListener();
-            };
-            UpdateVbanTestPanelVisibility();
-
+            VbanToggleButton.Click += VbanToggleButton_Click;
+            //VbanToggleButton.Click += (s, e) => {
+            //    UpdateVbanSectionsVisibility();
+            //    if (VbanToggleButton.IsChecked == true) StartConsoleListener();
+            //    else StopConsoleListener();
+            //};
+            UpdateVbanSectionsVisibility();
             PopulatePlaybackDevices();
-            ShowConsoleToggleButton.Click += (s, e) => UpdateVbanTestPanelVisibility();
+            ShowConsoleToggleButton.Click += (s, e) => UpdateVbanSectionsVisibility();
             AutoSelectDeviceCheckBox.IsChecked = Properties.Settings.Default.AutoSelectDeviceEnabled;
+            PopulateAutoSelectPresetComboBox();
+            AutoSelectPresetCheckBox.IsChecked = Properties.Settings.Default.AutoSelectPresetEnabled;
+            string savedPresetName = Properties.Settings.Default.AutoSelectPresetName;
+            foreach (ComboBoxItem item in AutoSelectPresetComboBox.Items)
+            {
+                if (item.Tag?.ToString() == savedPresetName)
+                {
+                    AutoSelectPresetComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+            UpdateAutoSelectPresetComboBoxVisibility();
             string savedDeviceId = Properties.Settings.Default.DefaultDeviceId;
             foreach (ComboBoxItem item in DefaultDeviceComboBox.Items) {
                 if (item.Tag?.ToString() == savedDeviceId) {
@@ -62,6 +83,195 @@ namespace YZ_Volume
             if (VbanToggleButton.IsChecked == true) {
                 StartConsoleListener();
             }
+            if (VbanToggleButton.IsChecked == true)
+            {
+                StartConsoleListener();
+                CheckVbanConnection(); // Run the check if VBAN is already on
+            }
+        }
+
+
+        private void OpenSoundSettings_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Process.Start("control.exe", "mmsys.cpl");
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Could not open sound settings: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OpenVolumeFlyout_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // --- THIS IS THE CORRECT METHOD ---
+                InputHelper.SendCtrlWinV();
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Could not send key combination: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OpenVolumeMixer_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Process.Start("sndvol.exe");
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Could not open volume mixer: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OpenAppVolumeMixer_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // This is the specific URI for the "System > Sound > Volume mixer" page
+                Process.Start(new ProcessStartInfo("ms-settings:apps-volume") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Could not open App Volume Mixer: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OpenMainSoundSettings_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // URI for "System > Sound"
+                Process.Start(new ProcessStartInfo("ms-settings:sound") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Could not open Sound Settings: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void OpenAllSoundDevices_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // URI for "System > Sound > All sound devices"
+                Process.Start(new ProcessStartInfo("ms-settings:sound-devices") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Could not open All Sound Devices: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async void CheckVbanConnection()
+        {
+            if (_consoleVbanClient == null)
+            {
+                VbanStatusPanel.Visibility = Visibility.Collapsed; // Hide if VBAN is off
+                return;
+            }
+
+            VbanStatusTextBlock.Text = "Status: Checking connection...";
+            VbanStatusIndicator.Fill = Brushes.Orange;
+            VbanStatusPanel.Visibility = Visibility.Visible;
+
+            bool receivedReply = false;
+            Action<string> versionReplyHandler = (reply) => {
+                if (reply.StartsWith("Command.Version")) { receivedReply = true; }
+            };
+            _consoleVbanClient.OnTextReplyReceived += versionReplyHandler;
+            _consoleVbanClient.SendCommand("Command.Version = ?");
+
+            await Task.Delay(1000);
+            _consoleVbanClient.OnTextReplyReceived -= versionReplyHandler;
+
+            if (receivedReply)
+            {
+                VbanStatusTextBlock.Text = "Status: Connected";
+                VbanStatusIndicator.Fill = Brushes.LightGreen;
+                if (_presets == null || _presets.Count == 0)
+                {
+                    AddToHistory("--- No local presets found. Auto-syncing from Matrix... ---", "SYSTEM");
+                    // Directly call the Sync button's click handler logic
+                    SyncPresets_Click(this, new RoutedEventArgs());
+                }
+            }
+            else
+            {
+                VbanStatusTextBlock.Text = "Status: Cannot connect to VB-Audio-Matrix. Is VBAN turned on?";
+                VbanStatusIndicator.Fill = Brushes.OrangeRed;
+                VbanToggleButton.IsChecked = false;
+                StopConsoleListener();
+                UpdateVbanSectionsVisibility();
+            }
+        }
+
+        private void VbanToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            UpdateVbanSectionsVisibility();
+            if (VbanToggleButton.IsChecked == true)
+            {
+                StartConsoleListener();
+                CheckVbanConnection(); // <-- Trigger check when turned ON
+            }
+            else
+            {
+                StopConsoleListener();
+                VbanStatusPanel.Visibility = Visibility.Collapsed;
+                //VbanStatusTextBlock.Visibility = Visibility.Collapsed; // Hide when turned OFF
+                UpdateVbanSectionsVisibility();
+            }
+        }
+
+        private void PopulatePresetConfigUI()
+        {
+            PresetConfigPanel.Children.Clear();
+            _presetConfigControls.Clear();
+
+            var visiblePresets = Properties.Settings.Default.VisiblePresetNames;
+            // --- NEW LOGIC ---
+            // If settings are null (first run), default to checking ALL presets.
+            if (visiblePresets == null)
+            {
+                visiblePresets = new System.Collections.Specialized.StringCollection();
+                foreach (var preset in _presets)
+                {
+                    visiblePresets.Add(preset.Name);
+                }
+            }
+            var overrideNamesJson = Properties.Settings.Default.PresetNameOverridesJson;
+            var overrideNames = !string.IsNullOrEmpty(overrideNamesJson) ? JsonConvert.DeserializeObject<Dictionary<string, string>>(overrideNamesJson) ?? new Dictionary<string, string>() : new Dictionary<string, string>();
+
+            foreach (var preset in _presets)
+            {
+                var grid = new Grid { Margin = new Thickness(0, 0, 0, 5) };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                // Simple CheckBox with the preset name as its content
+                var checkBox = new CheckBox
+                {
+                    Content = preset.Name,
+                    IsChecked = visiblePresets.Contains(preset.Name)
+                };
+
+                var overrideBox = new TextBox
+                {
+                    Text = overrideNames.ContainsKey(preset.Name) ? overrideNames[preset.Name] : ""
+                };
+
+                Grid.SetColumn(checkBox, 0);
+                Grid.SetColumn(overrideBox, 1);
+                grid.Children.Add(checkBox);
+                grid.Children.Add(overrideBox);
+
+                PresetConfigPanel.Children.Add(grid);
+                _presetConfigControls[preset.Name] = (checkBox, overrideBox);
+            }
         }
 
         protected override void OnClosing(CancelEventArgs e)
@@ -71,6 +281,7 @@ namespace YZ_Volume
         }
 
         private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
+        
         
         private void LoadAndSeedPresets()
         {
@@ -86,30 +297,30 @@ namespace YZ_Volume
         public static List<Preset> GetDefaultPresets()
         {
             return new List<Preset> {
-                new Preset { Name = "PC 5.1", VbanIndex = 1, Controls = new List<MatrixControl> {
-                        new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN1.OUT[1])" }, InitialGains = { -10.0 } },
-                        new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN1.OUT[2])" }, InitialGains = { -9.0 } },
-                        new MatrixControl { Label = "C",  CommandBases = { "Point(VAIO2.IN[3],WIN3.OUT[1])", "Point(VAIO2.IN[3],WIN3.OUT[2])" }, InitialGains = { -6.0, -4.5 } },
-                        new MatrixControl { Label = "S",  CommandBases = { "Point(VAIO2.IN[4],WIN1.OUT[1])", "Point(VAIO2.IN[4],WIN1.OUT[2])", "Point(VAIO2.IN[4],WIN4.OUT[1])", "Point(VAIO2.IN[4],WIN4.OUT[2])" }, InitialGains = { -10.0, -9.0, 0.0, -1.0 } },
-                        new MatrixControl { Label = "RL", CommandBases = { "Point(VAIO2.IN[5],WIN4.OUT[1])" }, InitialGains = { 0.0 } },
-                        new MatrixControl { Label = "RR", CommandBases = { "Point(VAIO2.IN[6],WIN4.OUT[2])" }, InitialGains = { -1.0 } }
-                }},
-                new Preset { Name = "PC 2.0", VbanIndex = 2, Controls = new List<MatrixControl> {
-                        new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN1.OUT[1])", "Point(VAIO2.IN[1],WIN4.OUT[1])" }, InitialGains = { 0.0, 0.0 } },
-                        new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN1.OUT[2])", "Point(VAIO2.IN[2],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
-                        new MatrixControl { Label = "C",  CommandBases = { "Point(VAIO2.IN[3],WIN1.OUT[1])", "Point(VAIO2.IN[3],WIN1.OUT[2])", "Point(VAIO2.IN[3],WIN4.OUT[1])", "Point(VAIO2.IN[3],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0, 0.0, 0.0 } },
-                        new MatrixControl { Label = "S",  CommandBases = { "Point(VAIO2.IN[4],WIN1.OUT[1])", "Point(VAIO2.IN[4],WIN1.OUT[2])", "Point(VAIO2.IN[4],WIN4.OUT[1])", "Point(VAIO2.IN[4],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0, 0.0, 0.0 } },
-                        new MatrixControl { Label = "RL", CommandBases = { "Point(VAIO2.IN[5],WIN1.OUT[1])", "Point(VAIO2.IN[5],WIN4.OUT[1])" }, InitialGains = { 0.0, 0.0 } },
-                        new MatrixControl { Label = "RR", CommandBases = { "Point(VAIO2.IN[6],WIN1.OUT[2])", "Point(VAIO2.IN[6],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0 } }
-                }},
-                new Preset { Name = "Beamer 5.1", VbanIndex = 3, Controls = new List<MatrixControl> {
-                        new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN4.OUT[2])" }, InitialGains = { -1.0 } },
-                        new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN4.OUT[1])" }, InitialGains = { 0.0 } },
-                        new MatrixControl { Label = "C",  CommandBases = { "Point(VAIO2.IN[3],WIN3.OUT[1])", "Point(VAIO2.IN[3],WIN3.OUT[2])", "Point(VAIO2.IN[3],WIN4.OUT[1])", "Point(VAIO2.IN[3],WIN4.OUT[2])" }, InitialGains = { -6.0, -4.5, -6.0, -7.0 } },
-                        new MatrixControl { Label = "S",  CommandBases = { "Point(VAIO2.IN[4],WIN1.OUT[1])", "Point(VAIO2.IN[4],WIN1.OUT[2])", "Point(VAIO2.IN[4],WIN4.OUT[1])", "Point(VAIO2.IN[4],WIN4.OUT[2])" }, InitialGains = { -10.0, -9.0, 0.0, -1.0 } },
-                        new MatrixControl { Label = "RL", CommandBases = { "Point(VAIO2.IN[5],WIN1.OUT[2])" }, InitialGains = { -9.0 } },
-                        new MatrixControl { Label = "RR", CommandBases = { "Point(VAIO2.IN[6],WIN1.OUT[1])" }, InitialGains = { -10.0 } }
-                }}
+                //new Preset { Name = "PC 5.1", VbanIndex = 1, Controls = new List<MatrixControl> {
+                //        new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN1.OUT[1])" }, InitialGains = { -10.0 } },
+                //        new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN1.OUT[2])" }, InitialGains = { -9.0 } },
+                //        new MatrixControl { Label = "C",  CommandBases = { "Point(VAIO2.IN[3],WIN3.OUT[1])", "Point(VAIO2.IN[3],WIN3.OUT[2])" }, InitialGains = { -6.0, -4.5 } },
+                //        new MatrixControl { Label = "S",  CommandBases = { "Point(VAIO2.IN[4],WIN1.OUT[1])", "Point(VAIO2.IN[4],WIN1.OUT[2])", "Point(VAIO2.IN[4],WIN4.OUT[1])", "Point(VAIO2.IN[4],WIN4.OUT[2])" }, InitialGains = { -10.0, -9.0, 0.0, -1.0 } },
+                //        new MatrixControl { Label = "RL", CommandBases = { "Point(VAIO2.IN[5],WIN4.OUT[1])" }, InitialGains = { 0.0 } },
+                //        new MatrixControl { Label = "RR", CommandBases = { "Point(VAIO2.IN[6],WIN4.OUT[2])" }, InitialGains = { -1.0 } }
+                //}},
+                //new Preset { Name = "PC 2.0", VbanIndex = 2, Controls = new List<MatrixControl> {
+                //        new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN1.OUT[1])", "Point(VAIO2.IN[1],WIN4.OUT[1])" }, InitialGains = { 0.0, 0.0 } },
+                //        new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN1.OUT[2])", "Point(VAIO2.IN[2],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0 } },
+                //        new MatrixControl { Label = "C",  CommandBases = { "Point(VAIO2.IN[3],WIN1.OUT[1])", "Point(VAIO2.IN[3],WIN1.OUT[2])", "Point(VAIO2.IN[3],WIN4.OUT[1])", "Point(VAIO2.IN[3],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0, 0.0, 0.0 } },
+                //        new MatrixControl { Label = "S",  CommandBases = { "Point(VAIO2.IN[4],WIN1.OUT[1])", "Point(VAIO2.IN[4],WIN1.OUT[2])", "Point(VAIO2.IN[4],WIN4.OUT[1])", "Point(VAIO2.IN[4],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0, 0.0, 0.0 } },
+                //        new MatrixControl { Label = "RL", CommandBases = { "Point(VAIO2.IN[5],WIN1.OUT[1])", "Point(VAIO2.IN[5],WIN4.OUT[1])" }, InitialGains = { 0.0, 0.0 } },
+                //        new MatrixControl { Label = "RR", CommandBases = { "Point(VAIO2.IN[6],WIN1.OUT[2])", "Point(VAIO2.IN[6],WIN4.OUT[2])" }, InitialGains = { 0.0, 0.0 } }
+                //}},
+                //new Preset { Name = "Beamer 5.1", VbanIndex = 3, Controls = new List<MatrixControl> {
+                //        new MatrixControl { Label = "FL", CommandBases = { "Point(VAIO2.IN[1],WIN4.OUT[2])" }, InitialGains = { -1.0 } },
+                //        new MatrixControl { Label = "FR", CommandBases = { "Point(VAIO2.IN[2],WIN4.OUT[1])" }, InitialGains = { 0.0 } },
+                //        new MatrixControl { Label = "C",  CommandBases = { "Point(VAIO2.IN[3],WIN3.OUT[1])", "Point(VAIO2.IN[3],WIN3.OUT[2])", "Point(VAIO2.IN[3],WIN4.OUT[1])", "Point(VAIO2.IN[3],WIN4.OUT[2])" }, InitialGains = { -6.0, -4.5, -6.0, -7.0 } },
+                //        new MatrixControl { Label = "S",  CommandBases = { "Point(VAIO2.IN[4],WIN1.OUT[1])", "Point(VAIO2.IN[4],WIN1.OUT[2])", "Point(VAIO2.IN[4],WIN4.OUT[1])", "Point(VAIO2.IN[4],WIN4.OUT[2])" }, InitialGains = { -10.0, -9.0, 0.0, -1.0 } },
+                //        new MatrixControl { Label = "RL", CommandBases = { "Point(VAIO2.IN[5],WIN1.OUT[2])" }, InitialGains = { -9.0 } },
+                //        new MatrixControl { Label = "RR", CommandBases = { "Point(VAIO2.IN[6],WIN1.OUT[1])" }, InitialGains = { -10.0 } }
+                //}}
             };
         }
 
@@ -120,9 +331,8 @@ namespace YZ_Volume
                 System.Windows.MessageBox.Show("VBAN is not active.", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-
             AddToHistory("--- Importing from Live State: Requesting config file path... ---", "SYSTEM");
-            _isWaitingForConfigFile = true; // Set the flag
+            _isWaitingForConfigFile = true;
             _consoleVbanClient.SendCommand("Command.Load = ?");
         }
 
@@ -176,6 +386,7 @@ namespace YZ_Volume
                 catch (Exception ex) { System.Windows.MessageBox.Show($"Failed to import '{Path.GetFileName(filename)}':\n{ex.Message}", "Import Error", MessageBoxButton.OK, MessageBoxImage.Error); }
             }
             UpdatePresetManagerUI();
+            UpdateVbanSectionsVisibility();
         }
 
         private Preset ParsePresetFromXml(string filePath)
@@ -229,37 +440,152 @@ namespace YZ_Volume
             }
             doc.Save(saveFileDialog.FileName);
         }
+
+        // --- NEW: Method to build the Matrix Slider Config UI ---
+        private void PopulateMatrixSliderConfigUI()
+        {
+            MatrixSliderConfigPanel.Children.Clear();
+            _matrixConfigControls.Clear();
+            var visibleControls = Properties.Settings.Default.VisibleMatrixControls;
+            var allLabels = _presets.SelectMany(p => p.Controls).Select(c => c.Label).Distinct().OrderBy(l => l);
+
+            // --- NEW LOGIC ---
+            // If settings are null (first run), default to checking ALL sliders.
+            if (visibleControls == null)
+            {
+                visibleControls = new System.Collections.Specialized.StringCollection();
+                foreach (var label in allLabels)
+                {
+                    visibleControls.Add(label);
+                }
+            }
+            var overrideNamesJson = Properties.Settings.Default.MatrixControlOverridesJson;
+            var overrideNames = !string.IsNullOrEmpty(overrideNamesJson) ? JsonConvert.DeserializeObject<Dictionary<string, string>>(overrideNamesJson) ?? new Dictionary<string, string>() : new Dictionary<string, string>();
+            
+            foreach (var label in allLabels)
+            {
+                var grid = new Grid { Margin = new Thickness(0, 0, 0, 5) };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                var checkBox = new CheckBox { Content = label, IsChecked = visibleControls.Contains(label) };
+                var textBox = new TextBox { Text = overrideNames.ContainsKey(label) ? overrideNames[label] : "" };
+                Grid.SetColumn(checkBox, 0);
+                Grid.SetColumn(textBox, 1);
+                grid.Children.Add(checkBox);
+                grid.Children.Add(textBox);
+                MatrixSliderConfigPanel.Children.Add(grid);
+                _matrixConfigControls[label] = (checkBox, textBox);
+            }
+        }
+
+        // --- UPDATE: SaveButton_Click needs to save the new settings ---
         private void SaveButton_Click(object sender, RoutedEventArgs e)
         {
+            // --- VBAN Settings ---
             Properties.Settings.Default.VbanEnabled = VbanToggleButton.IsChecked ?? false;
             Properties.Settings.Default.VbanIpAddress = VbanIpTextBox.Text;
             if (int.TryParse(VbanPortTextBox.Text, out int port)) Properties.Settings.Default.VbanPort = port;
-            var visibleIDs = new System.Collections.Specialized.StringCollection();
-            var customNamesDict = new Dictionary<string, string>();
-            foreach (var pair in deviceControls) {
-                if (pair.Value.VisibiltyCheckBox.IsChecked == true) visibleIDs.Add(pair.Key);
-                if (!string.IsNullOrWhiteSpace(pair.Value.NameTextBox.Text)) customNamesDict.Add(pair.Key, pair.Value.NameTextBox.Text);
+
+            // --- Windows Device Settings ---
+            var visibleDeviceIDs = new System.Collections.Specialized.StringCollection();
+            var customDeviceNames = new Dictionary<string, string>();
+            foreach (var pair in deviceControls)
+            {
+                if (pair.Value.VisibiltyCheckBox.IsChecked == true) visibleDeviceIDs.Add(pair.Key);
+                if (!string.IsNullOrWhiteSpace(pair.Value.NameTextBox.Text)) customDeviceNames.Add(pair.Key, pair.Value.NameTextBox.Text);
             }
-            Properties.Settings.Default.VisibleDeviceIDs = visibleIDs;
-            Properties.Settings.Default.CustomDeviceNames = JsonConvert.SerializeObject(customNamesDict);
-            foreach (var preset in _presets) {
-                if (_presetIndexTextBoxes.TryGetValue(preset, out var indexBox)) {
-                    if (int.TryParse(indexBox.Text, out int newIndex)) {
-                        preset.VbanIndex = newIndex;
+            Properties.Settings.Default.VisibleDeviceIDs = visibleDeviceIDs;
+            Properties.Settings.Default.CustomDeviceNames = JsonConvert.SerializeObject(customDeviceNames);
+
+            // --- Preset Visibility & Name Overrides ---
+            var visiblePresetNames = new System.Collections.Specialized.StringCollection();
+            var presetNameOverrides = new Dictionary<string, string>();
+            foreach (var pair in _presetConfigControls)
+            {
+                if (pair.Value.Visibility.IsChecked == true) visiblePresetNames.Add(pair.Key);
+                if (!string.IsNullOrWhiteSpace(pair.Value.OverrideName.Text)) presetNameOverrides[pair.Key] = pair.Value.OverrideName.Text;
+            }
+            Properties.Settings.Default.VisiblePresetNames = visiblePresetNames;
+            Properties.Settings.Default.PresetNameOverridesJson = JsonConvert.SerializeObject(presetNameOverrides);
+
+            // --- ### THE FINAL, CORRECT FIX for Matrix Slider Config ### ---
+            var visibleMatrixControls = new System.Collections.Specialized.StringCollection();
+            var matrixControlOverrides = new Dictionary<string, string>();
+            // We iterate through the VISUAL elements in the panel, not the old dictionary.
+            foreach (Grid grid in MatrixSliderConfigPanel.Children)
+            {
+                var checkBox = grid.Children.OfType<CheckBox>().FirstOrDefault();
+                var textBox = grid.Children.OfType<TextBox>().FirstOrDefault();
+                if (checkBox != null && textBox != null && checkBox.Content is string label)
+                {
+                    if (checkBox.IsChecked == true)
+                    {
+                        visibleMatrixControls.Add(label);
+                    }
+                    if (!string.IsNullOrWhiteSpace(textBox.Text))
+                    {
+                        matrixControlOverrides[label] = textBox.Text;
                     }
                 }
             }
-            Properties.Settings.Default.AutoSelectDeviceEnabled = AutoSelectDeviceCheckBox.IsChecked ?? false;
-            if (DefaultDeviceComboBox.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag != null) {
-                Properties.Settings.Default.DefaultDeviceId = selectedItem.Tag.ToString();
-            } else {
-                Properties.Settings.Default.DefaultDeviceId = string.Empty;
+            Properties.Settings.Default.VisibleMatrixControls = visibleMatrixControls;
+            Properties.Settings.Default.MatrixControlOverridesJson = JsonConvert.SerializeObject(matrixControlOverrides);
+            // --- END OF FIX ---
+
+            // --- Preset Manager & VBAN Index ---
+            foreach (var preset in _presets)
+            {
+                if (_presetIndexTextBoxes.TryGetValue(preset, out var indexBox))
+                {
+                    if (int.TryParse(indexBox.Text, out int newIndex)) preset.VbanIndex = newIndex;
+                }
             }
             Properties.Settings.Default.PresetsJson = JsonConvert.SerializeObject(_presets);
+            Properties.Settings.Default.AutoSelectPresetEnabled = AutoSelectPresetCheckBox.IsChecked ?? false;
+            if (AutoSelectPresetComboBox.SelectedItem is ComboBoxItem selectedPresetItem && selectedPresetItem.Tag != null)
+            {
+                Properties.Settings.Default.AutoSelectPresetName = selectedPresetItem.Tag.ToString();
+            }
+            else
+            {
+                Properties.Settings.Default.AutoSelectPresetName = string.Empty;
+            }
+
+            // --- Auto-Select Default Device ---
+            Properties.Settings.Default.AutoSelectDeviceEnabled = AutoSelectDeviceCheckBox.IsChecked ?? false;
+            if (DefaultDeviceComboBox.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag != null)
+            {
+                Properties.Settings.Default.DefaultDeviceId = selectedItem.Tag.ToString();
+            }
+            else
+            {
+                Properties.Settings.Default.DefaultDeviceId = string.Empty;
+            }
+
+            // --- Final Save ---
             Properties.Settings.Default.Save();
             DialogResult = true;
             Close();
         }
+
+        private void PopulateAutoSelectPresetComboBox()
+        {
+            AutoSelectPresetComboBox.Items.Clear();
+            foreach (var preset in _presets)
+            {
+                var item = new ComboBoxItem { Content = preset.Name, Tag = preset.Name };
+                AutoSelectPresetComboBox.Items.Add(item);
+            }
+        }
+        private void AutoSelectPresetCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            UpdateAutoSelectPresetComboBoxVisibility();
+        }
+        private void UpdateAutoSelectPresetComboBoxVisibility()
+        {
+            AutoSelectPresetComboBox.Visibility = AutoSelectPresetCheckBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        }
+
 
         private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
 
@@ -291,22 +617,21 @@ namespace YZ_Volume
             }
         }
 
-        private void UpdateVbanTestPanelVisibility()
+        private void UpdateVbanSectionsVisibility()
         {
             bool isVbanEnabled = VbanToggleButton.IsChecked == true;
-            bool isConsoleVisible = ShowConsoleToggleButton.IsChecked == true;
 
-            // Show the Sync button only if VBAN is enabled
+            // --- Control visibility of all VBAN-dependent sections ---
+            AutoSelectPresetBorder.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
+            PresetConfigBorder.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
+            MatrixConfigBorder.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
             SyncButton.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
-
-            // Show the ShowConsole button only if VBAN is enabled
             ShowConsoleToggleButton.Visibility = isVbanEnabled ? Visibility.Visible : Visibility.Collapsed;
 
-            // Show the Test Panel only if BOTH are enabled
-            if (VbanTestPanel != null)
-            {
-                VbanTestPanel.Visibility = (isVbanEnabled && isConsoleVisible) ? Visibility.Visible : Visibility.Collapsed;
-            }
+            // Control visibility of the dev console itself
+            bool isConsoleToggleVisible = ShowConsoleToggleButton.Visibility == Visibility.Visible;
+            bool isConsoleToggleOn = ShowConsoleToggleButton.IsChecked == true;
+            VbanTestPanel.Visibility = (isConsoleToggleVisible && isConsoleToggleOn) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void StartConsoleListener()
@@ -334,68 +659,50 @@ namespace YZ_Volume
         {
             // Must use the dispatcher to access UI and local fields safely
             if (!_isConsoleSilent)
-            { 
-                Dispatcher.Invoke(() =>
             {
-                // First, add the raw reply to the history log
-                AddToHistory(reply, "REPLY");
-
-                // --- NEW LOGIC ---
-                if (_isWaitingForConfigFile && reply.StartsWith("Command.Load"))
-                {
-                    _isWaitingForConfigFile = false; // Unset the flag
-
-                    var match = Regex.Match(reply, "\"([^\"]*)\"");
-                    if (match.Success)
+                Dispatcher.Invoke(() => {
+                    if (!_isConsoleSilent) { AddToHistory(reply, "REPLY"); }
+                    if (_isWaitingForConfigFile && reply.StartsWith("Command.Load"))
                     {
-                        string filePath = match.Groups[1].Value;
-                        AddToHistory($"--- Config file found at: {filePath} ---", "SYSTEM");
-                        try
+                        _isWaitingForConfigFile = false;
+                        var match = Regex.Match(reply, "\"([^\"]*)\"");
+                        if (match.Success)
                         {
-                            var newPreset = ParseLiveStateFromXml(filePath);
-                            _presets.Add(newPreset);
-                            UpdatePresetManagerUI();
-                            AddToHistory($"--- Successfully imported '{newPreset.Name}' from live state. ---", "SYSTEM");
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Windows.MessageBox.Show($"Failed to parse live state file: {ex.Message}", "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                            string filePath = match.Groups[1].Value;
+                            AddToHistory($"--- Config file found at: {filePath} ---", "SYSTEM");
+                            try
+                            {
+                                var newPreset = ParseLiveStateFromXml(filePath);
+                                _presets.Add(newPreset);
+                                UpdatePresetManagerUI();
+                                PopulateMatrixSliderConfigUI();
+                                AddToHistory($"--- Successfully imported '{newPreset.Name}' from live state. ---", "SYSTEM");
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Windows.MessageBox.Show($"Failed to parse live state file: {ex.Message}", "Import Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                            }
                         }
                     }
-                }
-            });
-        }
+                });
+
+            }
         }
 
         private Preset ParseLiveStateFromXml(string filePath)
         {
             XDocument doc = XDocument.Load(filePath);
             if (doc.Root == null) throw new InvalidDataException("Config file is empty or invalid.");
-
-            // Create a default name for the imported preset
-            var preset = new Preset { Name = $"Live Import {DateTime.Now:yyyy-MM-dd HH:mm:ss}" };
-            preset.VbanIndex = _presets.Count + 1; // Assign next available index
-
+            var preset = new Preset { Name = $"Live Import {DateTime.Now:yyyy-MM-dd HH:mm:ss}", VbanIndex = _presets.Count + 1 };
             var inputMap = new Dictionary<string, string> { { "1", "FL" }, { "2", "FR" }, { "3", "C" }, { "4", "S" }, { "5", "RL" }, { "6", "RR" } };
-
-            // Target the correct section for live state
             var gridConfig = doc.Descendants("VBAudioMatrixGridConfiguration").FirstOrDefault();
-            if (gridConfig == null) throw new InvalidDataException("'<VBAudioMatrixGridConfiguration>' section not found in config file.");
-
-            // Group all <Point> elements (not <PresetPoint>) by their 'in' attribute
-            var groupedPoints = gridConfig.Descendants("Point")
-                .Where(p => p.Attribute("in") != null && inputMap.ContainsKey(p.Attribute("in").Value))
-                .GroupBy(p => p.Attribute("in").Value);
-
+            if (gridConfig == null) throw new InvalidDataException("'<VBAudioMatrixGridConfiguration>' section not found.");
+            var groupedPoints = gridConfig.Descendants("Point").Where(p => p.Attribute("in") != null && inputMap.ContainsKey(p.Attribute("in")!.Value)).GroupBy(p => p.Attribute("in")!.Value);
             foreach (var group in groupedPoints.OrderBy(g => g.Key))
             {
                 string label = inputMap[group.Key];
                 var commandBases = group.Select(p => $"Point({p.Attribute("slotin")?.Value}.IN[{p.Attribute("in")?.Value}],{p.Attribute("slotout")?.Value}[{p.Attribute("out")?.Value}])").ToList();
-                var gains = group.Select(p => {
-                    double.TryParse(p.Attribute("dBGain")?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double gainVal);
-                    return gainVal;
-                }).ToList();
-
+                var gains = group.Select(p => { double.TryParse(p.Attribute("dBGain")?.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out double gainVal); return gainVal; }).ToList();
                 preset.Controls.Add(new MatrixControl { Label = label, CommandBases = commandBases, InitialGains = gains });
             }
             return preset;
@@ -807,6 +1114,9 @@ namespace YZ_Volume
                 AddToHistory("--- Starting Preset Sync... ---", "SYSTEM");
                 _presets.Clear();
                 UpdatePresetManagerUI();
+                PopulatePresetConfigUI();
+                PopulateMatrixSliderConfigUI();
+                UpdateVbanSectionsVisibility();
                 AddToHistory("Cleared local presets. Discovering new presets from Matrix...", "SYSTEM");
 
                 var allReplies = new List<string>();
@@ -822,8 +1132,16 @@ namespace YZ_Volume
                 {
                     var pathReply = allReplies.FirstOrDefault(r => r.StartsWith("Command.Load"));
                     var match = pathReply != null ? Regex.Match(pathReply, "\"([^\"]*)\"") : null;
-                    if (!match?.Success ?? true) { AddToHistory("Could not determine config file path. Aborting.", "SYSTEM"); _consoleVbanClient.OnTextReplyReceived -= replyHandler; return; }
-                    filePath = match.Groups[1].Value;
+                    if (match?.Success ?? false)
+                    {
+                        filePath = match.Groups[1].Value;
+                    }
+                    else
+                    {
+                        AddToHistory("Could not determine config file path. Aborting.", "SYSTEM");
+                        _consoleVbanClient.OnTextReplyReceived -= replyHandler;
+                        return; // Exit the method immediately
+                    }
                 }
                 allReplies.Clear();
 
@@ -837,7 +1155,7 @@ namespace YZ_Volume
                 {
                     XDocument doc = XDocument.Load(filePath);
                     if (doc.Root == null) throw new InvalidDataException("Config XML is invalid.");
-                    activeInputs = doc.Descendants("VAIOSlot").Where(s => s.Attribute("online")?.Value == "1").Select(s => s.Attribute("uniq")?.Value).Where(v => v != null).ToList();
+                    activeInputs = doc.Descendants("VAIOSlot").Where(s => s.Attribute("online")?.Value == "1").Select(s => s.Attribute("uniq")?.Value).Where(v => v != null).ToList()!;
                 }
                 catch (Exception ex) { AddToHistory($"Error parsing config file: {ex.Message}", "SYSTEM"); _consoleVbanClient.OnTextReplyReceived -= replyHandler; return; }
 
@@ -891,7 +1209,7 @@ namespace YZ_Volume
                 {
                     XDocument doc = XDocument.Load(filePath);
                     if (doc.Root == null) throw new InvalidDataException("Config XML is invalid.");
-                    activeWinOutputs = doc.Descendants("AMDevice").Where(d => d.Attribute("uniq")?.Value?.StartsWith("WIN") ?? false).Select(d => d.Attribute("uniq")?.Value).Where(v => v != null).ToList();
+                    activeWinOutputs = doc.Descendants("AMDevice").Where(d => d.Attribute("uniq")?.Value?.StartsWith("WIN") ?? false).Select(d => d.Attribute("uniq")?.Value).Where(v => v != null).ToList()!;
                 }
                 catch (Exception ex) { AddToHistory($"Error parsing config file: {ex.Message}", "SYSTEM"); return; }
 
@@ -932,7 +1250,7 @@ namespace YZ_Volume
                         if (!inMatch.Success) continue;
 
                         string inputNumber = inMatch.Groups[1].Value;
-                        if (!finalInputMap.TryGetValue(inputNumber, out string label)) continue;
+                        if (!finalInputMap.TryGetValue(inputNumber, out string? label)) continue;
 
                         if (!controlsToBuild.ContainsKey(label))
                         {
@@ -955,18 +1273,42 @@ namespace YZ_Volume
                 Properties.Settings.Default.PresetsJson = JsonConvert.SerializeObject(_presets);
                 Properties.Settings.Default.Save();
                 UpdatePresetManagerUI();
+                UpdateVbanSectionsVisibility();
+                PopulateMatrixSliderConfigUI();
+                PopulatePresetConfigUI();
                 AddToHistory($"SUCCESS: Synced and saved {_presets.Count} presets from the live Matrix state.", "SYSTEM");
             }
             finally
             {
-                _isConsoleSilent = true;
+                _isConsoleSilent = false;
                 SyncButtonSpinner.Visibility = Visibility.Collapsed;
                 SyncButtonText.Visibility = Visibility.Visible;
                 SyncButton.IsEnabled = true;
             }
         }
-    
-private void SaveLogItem_Click(object sender, RoutedEventArgs e)
+
+        private void SettingsWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            // Check if the 'Y' key is pressed
+            if (e.Key == Key.Y)
+            {
+                // Check if BOTH Ctrl and Alt are being held down
+                bool isCtrlDown = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+                bool isAltDown = Keyboard.IsKeyDown(Key.LeftAlt) || Keyboard.IsKeyDown(Key.RightAlt);
+
+                if (isCtrlDown && isAltDown)
+                {
+                    // If the hotkey is pressed, toggle the visibility of the test panel
+                    if (VbanTestPanel != null)
+                    {
+                        ShowConsoleToggleButton.Visibility = ShowConsoleToggleButton.Visibility == Visibility.Visible
+                        ? Visibility.Collapsed
+                        : Visibility.Visible;
+                    }
+                }
+            }
+        }
+        private void SaveLogItem_Click(object sender, RoutedEventArgs e)
         {
             // The sender is the MenuItem. Its DataContext is the ListBoxItem it was opened from.
             if (sender is MenuItem menuItem && menuItem.DataContext is ListBoxItem listBoxItem)

@@ -11,15 +11,11 @@ namespace YZ_Volume
     {
         protected override void OnStartup(StartupEventArgs e)
         {
-            // --- THIS IS THE FIX ---
-            // By creating an instance of MMDeviceEnumerator here, we force NAudio
-            // to initialize the COM environment first, in a way that is compatible
-            // with both itself and the AudioSwitcher library. We don't need to
-            // use the variable; just creating it is enough.
-            var _ = new NAudio.CoreAudioApi.MMDeviceEnumerator();
-            // --- END OF FIX ---
+            // Prime the COM environment for NAudio and AudioSwitcher
+            var _ = new NAudio.CoreAudioApi.MMDeviceEnumerator();            
 
             base.OnStartup(e);
+            var mainWindow = new MainWindow();
         }
     }
 
