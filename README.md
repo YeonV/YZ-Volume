@@ -9,7 +9,8 @@ Bonus: VB-audio-Matrix integration
 
 <details>
    <summary>Settings Page</summary>   
-   <img width="561" height="608" alt="image" src="https://github.com/user-attachments/assets/a23bcea2-f9d1-455d-b019-4f65c434f137" />
+   
+   <img width="917" height="764" alt="image" src="https://github.com/user-attachments/assets/0bb3a22e-26f9-4340-9ffa-9d28047fff43" />
 </details>
 
 <details>
