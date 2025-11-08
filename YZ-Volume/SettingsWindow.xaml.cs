@@ -23,6 +23,9 @@ using System.Diagnostics;
 
 namespace YZ_Volume
 {
+    public class DeviceInfo { public string Id { get; set; } public string Name { get; set; } public DataFlow Flow { get; set; } }
+    public class PlaybackDeviceInfo { public Guid Id { get; set; } public string Name { get; set; } }
+
     public partial class SettingsWindow : Window
     {
         private List<Preset> _presets = new();
@@ -37,30 +40,127 @@ namespace YZ_Volume
         private bool _isWaitingForConfigFile = false;
         private Dictionary<string, (ToggleButton Visibility, TextBox OverrideName)> _presetConfigControls = new();
 
+        //public SettingsWindow()
+        //{
+        //    InitializeComponent();
+        //    DwmApi.UseImmersiveDarkMode(this, true);
+        //    this.Loaded += SettingsWindow_Loaded;
+        //    //LoadAndSeedPresets();
+        //    //LoadDevices();
+        //    //UpdatePresetManagerUI();
+        //    //PopulateMatrixSliderConfigUI(); // NEW: Populate the new section
+        //    //PopulatePresetConfigUI();
+
+        //    //VbanToggleButton.IsChecked = Properties.Settings.Default.VbanEnabled;
+        //    //VbanIpTextBox.Text = Properties.Settings.Default.VbanIpAddress;
+        //    //VbanPortTextBox.Text = Properties.Settings.Default.VbanPort.ToString();
+        //    //VbanToggleButton.Click += VbanToggleButton_Click;
+        //    //UpdateVbanSectionsVisibility();
+        //    //PopulatePlaybackDevices();
+        //    //ShowConsoleToggleButton.Click += (s, e) => UpdateVbanSectionsVisibility();
+        //    //AutoSelectDeviceCheckBox.IsChecked = Properties.Settings.Default.AutoSelectDeviceEnabled;
+        //    //PopulateAutoSelectPresetComboBox();
+        //    //AutoSelectPresetCheckBox.IsChecked = Properties.Settings.Default.AutoSelectPresetEnabled;
+        //    //string savedPresetName = Properties.Settings.Default.AutoSelectPresetName;
+        //    //foreach (ComboBoxItem item in AutoSelectPresetComboBox.Items)
+        //    //{
+        //    //    if (item.Tag?.ToString() == savedPresetName)
+        //    //    {
+        //    //        AutoSelectPresetComboBox.SelectedItem = item;
+        //    //        break;
+        //    //    }
+        //    //}
+        //    //UpdateAutoSelectPresetComboBoxVisibility();
+        //    //string savedDeviceId = Properties.Settings.Default.DefaultDeviceId;
+        //    //foreach (ComboBoxItem item in DefaultDeviceComboBox.Items) {
+        //    //    if (item.Tag?.ToString() == savedDeviceId) {
+        //    //        DefaultDeviceComboBox.SelectedItem = item;
+        //    //        break;
+        //    //    }
+        //    //}
+        //    //UpdateDeviceComboBoxVisibility();
+        //    //if (VbanToggleButton.IsChecked == true) {
+        //    //    StartConsoleListener();
+        //    //}
+        //    //if (VbanToggleButton.IsChecked == true)
+        //    //{
+        //    //    StartConsoleListener();
+        //    //    CheckVbanConnection(); // Run the check if VBAN is already on
+        //    //}
+        //}
         public SettingsWindow()
         {
             InitializeComponent();
             DwmApi.UseImmersiveDarkMode(this, true);
-            LoadAndSeedPresets();
-            LoadDevices();
+            this.Loaded += SettingsWindow_Loaded;
+        }
+
+        private async void SettingsWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            await LoadAllDataAsync();
+            LoadingSpinner.Visibility = Visibility.Collapsed;
+        }
+
+        private async Task LoadAllDataAsync()
+        {
+            List<Preset> loadedPresets = new List<Preset>();
+            List<DeviceInfo> allDevices = new List<DeviceInfo>();
+            List<PlaybackDeviceInfo> playbackDevices = new List<PlaybackDeviceInfo>();
+
+            // --- THIS IS THE FINAL, CORRECT ASYNC PATTERN ---
+            await Task.Run(() => {
+                // 1. Do CPU-bound work (JSON parsing) on background thread.
+                string json = Properties.Settings.Default.PresetsJson;
+                if (!string.IsNullOrEmpty(json))
+                {
+                    loadedPresets = JsonConvert.DeserializeObject<List<Preset>>(json) ?? new List<Preset>();
+                }
+                if (loadedPresets == null || loadedPresets.Count == 0)
+                {
+                    loadedPresets = GetDefaultPresets();
+                }
+
+                // 2. Do the slow COM work on the background thread.
+                //    Create, use, and dispose of COM objects entirely within this thread.
+                var enumerator = new MMDeviceEnumerator();
+                foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active))
+                {
+                    allDevices.Add(new DeviceInfo { Id = device.ID, Name = device.FriendlyName, Flow = device.DataFlow });
+                    device.Dispose();
+                }
+                enumerator.Dispose();
+
+                var controller = new CoreAudioController();
+                foreach (var device in controller.GetPlaybackDevices(AudioSwitcher.AudioApi.DeviceState.Active))
+                {
+                    playbackDevices.Add(new PlaybackDeviceInfo { Id = device.Id, Name = device.FullName });
+                }
+                controller.Dispose();
+            });
+
+            // 3. NOW, back on the UI thread, build the UI with the safe, simple data.
+            _presets = loadedPresets;
+            LoadDevicesUI(allDevices);
             UpdatePresetManagerUI();
-            PopulateMatrixSliderConfigUI(); // NEW: Populate the new section
+            PopulateMatrixSliderConfigUI();
             PopulatePresetConfigUI();
+            PopulatePlaybackDevicesUI(playbackDevices);
+            PopulateAutoSelectPresetComboBox();
 
             VbanToggleButton.IsChecked = Properties.Settings.Default.VbanEnabled;
             VbanIpTextBox.Text = Properties.Settings.Default.VbanIpAddress;
             VbanPortTextBox.Text = Properties.Settings.Default.VbanPort.ToString();
             VbanToggleButton.Click += VbanToggleButton_Click;
-            //VbanToggleButton.Click += (s, e) => {
-            //    UpdateVbanSectionsVisibility();
-            //    if (VbanToggleButton.IsChecked == true) StartConsoleListener();
-            //    else StopConsoleListener();
-            //};
-            UpdateVbanSectionsVisibility();
-            PopulatePlaybackDevices();
             ShowConsoleToggleButton.Click += (s, e) => UpdateVbanSectionsVisibility();
+
             AutoSelectDeviceCheckBox.IsChecked = Properties.Settings.Default.AutoSelectDeviceEnabled;
-            PopulateAutoSelectPresetComboBox();
+            string savedDeviceId = Properties.Settings.Default.DefaultDeviceId;
+            foreach (ComboBoxItem item in DefaultDeviceComboBox.Items)
+            {
+                if (item.Tag?.ToString() == savedDeviceId) { DefaultDeviceComboBox.SelectedItem = item; break; }
+            }
+            UpdateDeviceComboBoxVisibility();
+
             AutoSelectPresetCheckBox.IsChecked = Properties.Settings.Default.AutoSelectPresetEnabled;
             string savedPresetName = Properties.Settings.Default.AutoSelectPresetName;
             foreach (ComboBoxItem item in AutoSelectPresetComboBox.Items)
@@ -72,21 +172,53 @@ namespace YZ_Volume
                 }
             }
             UpdateAutoSelectPresetComboBoxVisibility();
-            string savedDeviceId = Properties.Settings.Default.DefaultDeviceId;
-            foreach (ComboBoxItem item in DefaultDeviceComboBox.Items) {
-                if (item.Tag?.ToString() == savedDeviceId) {
-                    DefaultDeviceComboBox.SelectedItem = item;
-                    break;
-                }
-            }
-            UpdateDeviceComboBoxVisibility();
-            if (VbanToggleButton.IsChecked == true) {
-                StartConsoleListener();
-            }
+
+            UpdateVbanSectionsVisibility();
+
             if (VbanToggleButton.IsChecked == true)
             {
                 StartConsoleListener();
-                CheckVbanConnection(); // Run the check if VBAN is already on
+                CheckVbanConnection();
+            }
+        }
+
+        private void LoadDevicesUI(List<DeviceInfo> allDevices)
+        {
+            SettingsDeviceListPanel.Children.Clear();
+            deviceControls.Clear();
+            var savedVisibleIDs = Properties.Settings.Default.VisibleDeviceIDs ?? new System.Collections.Specialized.StringCollection();
+            string? customNamesJson = Properties.Settings.Default.CustomDeviceNames;
+            var customNamesDict = !string.IsNullOrEmpty(customNamesJson) ? JsonConvert.DeserializeObject<Dictionary<string, string>>(customNamesJson) ?? new Dictionary<string, string>() : new Dictionary<string, string>();
+
+            foreach (var device in allDevices)
+            {
+                var grid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var iconTextBlock = new TextBlock { Style = (Style)FindResource("FluentIconTextStyle"), Text = (device.Flow == DataFlow.Render) ? "\uE767" : "\uE720", Margin = new Thickness(0, 0, 8, 0) };
+                var nameTextBlock = new TextBlock { Text = device.Name, VerticalAlignment = VerticalAlignment.Center };
+                var contentPanel = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+                contentPanel.Children.Add(iconTextBlock);
+                contentPanel.Children.Add(nameTextBlock);
+                var checkBox = new CheckBox { Content = contentPanel, IsChecked = savedVisibleIDs.Contains(device.Id), VerticalAlignment = VerticalAlignment.Center };
+                var textBox = new TextBox { Text = customNamesDict.ContainsKey(device.Id) ? customNamesDict[device.Id] : "", Margin = new Thickness(10, 0, 0, 0), Width = 150, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+                Grid.SetColumn(checkBox, 0);
+                Grid.SetColumn(textBox, 1);
+                grid.Children.Add(checkBox);
+                grid.Children.Add(textBox);
+                SettingsDeviceListPanel.Children.Add(grid);
+                deviceControls.Add(device.Id, (checkBox, textBox));
+            }
+        }
+
+
+        private void PopulatePlaybackDevicesUI(List<PlaybackDeviceInfo> playbackDevices)
+        {
+            DefaultDeviceComboBox.Items.Clear();
+            foreach (var device in playbackDevices)
+            {
+                var item = new ComboBoxItem { Content = device.Name, Tag = device.Id.ToString() };
+                DefaultDeviceComboBox.Items.Add(item);
             }
         }
 
@@ -589,34 +721,6 @@ namespace YZ_Volume
 
         private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
 
-        private void LoadDevices()
-        {
-            var savedVisibleIDs = Properties.Settings.Default.VisibleDeviceIDs;
-            string? customNamesJson = Properties.Settings.Default.CustomDeviceNames;
-            var customNamesDict = !string.IsNullOrEmpty(customNamesJson) ? JsonConvert.DeserializeObject<Dictionary<string, string>>(customNamesJson) ?? new Dictionary<string, string>() : new Dictionary<string, string>();
-            if (savedVisibleIDs == null) savedVisibleIDs = new System.Collections.Specialized.StringCollection();
-            var enumerator = new MMDeviceEnumerator();
-            var allDevices = enumerator.EnumerateAudioEndPoints(DataFlow.All, DeviceState.Active);
-            foreach (var device in allDevices) {
-                var grid = new System.Windows.Controls.Grid { Margin = new Thickness(0, 0, 0, 8) };
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                var iconTextBlock = new System.Windows.Controls.TextBlock { FontFamily = new System.Windows.Media.FontFamily("Segoe Fluent Icons"), Text = (device.DataFlow == DataFlow.Render) ? "\uE767" : "\uE720", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-                var nameTextBlock = new System.Windows.Controls.TextBlock { Text = device.FriendlyName, VerticalAlignment = VerticalAlignment.Center };
-                var contentPanel = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
-                contentPanel.Children.Add(iconTextBlock);
-                contentPanel.Children.Add(nameTextBlock);
-                var checkBox = new System.Windows.Controls.CheckBox { Content = contentPanel, IsChecked = savedVisibleIDs.Contains(device.ID), VerticalAlignment = VerticalAlignment.Center };
-                var textBox = new System.Windows.Controls.TextBox { Text = customNamesDict.ContainsKey(device.ID) ? customNamesDict[device.ID] : "", Margin = new Thickness(10, 0, 0, 0), Width = 150, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
-                System.Windows.Controls.Grid.SetColumn(checkBox, 0);
-                System.Windows.Controls.Grid.SetColumn(textBox, 1);
-                grid.Children.Add(checkBox);
-                grid.Children.Add(textBox);
-                SettingsDeviceListPanel.Children.Add(grid);
-                deviceControls.Add(device.ID, (checkBox, textBox));
-            }
-        }
-
         private void UpdateVbanSectionsVisibility()
         {
             bool isVbanEnabled = VbanToggleButton.IsChecked == true;
@@ -1019,11 +1123,11 @@ namespace YZ_Volume
                         var activeInputs = doc.Descendants("VAIOSlot").Where(s => s.Attribute("online")?.Value == "1").Select(s => s.Attribute("uniq")?.Value).Where(v => v != null).ToList();
                         foreach (var input in activeInputs)
                         {
-                            for (int i = 1; i <= 8; i++)
+                            for (int i = 1; i <= 8; i++) // Assuming 8 channels per input
                             {
                                 foreach (var output in activeOutputs)
                                 {
-                                    for (int j = 1; j <= 8; j++)
+                                    for (int j = 1; j <= 2; j++) // Assuming 2 channels per output
                                     {
                                         _consoleVbanClient.SendCommand($"Point({input}.IN[{i}],{output}[{j}]).dBGain = ?");
                                     }
@@ -1346,17 +1450,6 @@ namespace YZ_Volume
                 if (!_sentHistory.Contains(command)) _sentHistory.Add(command);
                 _historyIndex = -1;
                 CustomCommandTextBox.Clear();
-            }
-        }
-        
-        private void PopulatePlaybackDevices()
-        {
-            DefaultDeviceComboBox.Items.Clear();
-            var controller = new CoreAudioController();
-            var playbackDevices = controller.GetPlaybackDevices(AudioSwitcher.AudioApi.DeviceState.Active);
-            foreach (var device in playbackDevices) {
-                var item = new ComboBoxItem { Content = device.FullName, Tag = device.Id.ToString() };
-                DefaultDeviceComboBox.Items.Add(item);
             }
         }
 

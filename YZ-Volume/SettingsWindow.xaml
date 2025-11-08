@@ -284,6 +284,29 @@
 
             </Grid>
 
+            <Grid x:Name="LoadingSpinner" Grid.RowSpan="2" Background="#202020">
+                <TextBlock Text="&#xE895;" 
+                           FontFamily="Segoe Fluent Icons"
+                           FontSize="40"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="WhiteSmoke"
+                           RenderTransformOrigin="0.5,0.5">
+                    <TextBlock.RenderTransform>
+                        <RotateTransform/>
+                    </TextBlock.RenderTransform>
+                    <TextBlock.Triggers>
+                        <EventTrigger RoutedEvent="Loaded">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                     From="0" To="360" Duration="0:0:1.5" RepeatBehavior="Forever"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </TextBlock.Triggers>
+                </TextBlock>
+            </Grid>
             <!-- BUTTON BAR -->
             <Grid Grid.Row="1" Margin="0,15,0,0">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

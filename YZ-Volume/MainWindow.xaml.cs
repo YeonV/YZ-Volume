@@ -239,7 +239,11 @@ namespace YZ_Volume
             string json = Properties.Settings.Default.PresetsJson;
             if (string.IsNullOrEmpty(json))
             {
-                return new List<Preset>();
+                // Call the static method directly on the class. No instance needed.
+                var defaultPresets = SettingsWindow.GetDefaultPresets(); // <-- THIS IS THE FIX
+                Properties.Settings.Default.PresetsJson = JsonConvert.SerializeObject(defaultPresets);
+                Properties.Settings.Default.Save();
+                return defaultPresets;
             }
             return JsonConvert.DeserializeObject<List<Preset>>(json) ?? new List<Preset>();
         }
@@ -263,6 +267,7 @@ namespace YZ_Volume
             {
                 if (savedDeviceIDs.Contains(device.ID)) AddDeviceToUI(device);
             }
+            enumerator.Dispose();
         }
 
         private void AddDeviceToUI(MMDevice device)
@@ -434,6 +439,8 @@ namespace YZ_Volume
 
         private void OpenSettingsWindow()
         {
+
+            var enumerator = new MMDeviceEnumerator();
             var settingsWindow = new SettingsWindow();
             if (settingsWindow.ShowDialog() == true)
             {
