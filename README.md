@@ -1,4 +1,4 @@
-[![creator](https://img.shields.io/badge/CREATOR-Yeon-blue.svg?logo=github&logoColor=white)](https://github.com/YeonV) [![creator](https://img.shields.io/badge/A.K.A-Blade-darkred.svg?logo=github&logoColor=white)](https://github.com/YeonV)
+![version](https://img.shields.io/github/v/release/YeonV/YZ-Volume?label=VERSION&logo=git&logoColor=white) [![creator](https://img.shields.io/badge/CREATOR-Yeon-blue.svg?logo=github&logoColor=white)](https://github.com/YeonV) [![creator](https://img.shields.io/badge/A.K.A-Blade-darkred.svg?logo=github&logoColor=white)](https://github.com/YeonV)
 <h1><img width="40" height="40" alt="YZ-Volume-Logo" src="https://github.com/user-attachments/assets/b0902573-34d1-4875-8a80-f34691738e05" align="top" />&nbsp;YZ-Volume</h1>
 
 Tray-App to control the volume of selectable audio devices.
