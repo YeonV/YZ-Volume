@@ -449,20 +449,19 @@ namespace YZ_Volume
             }
         }
 
+        private Preset? GetSelectedPreset()
+        {
+            if (PresetComboBox.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag is string realName)
+            {
+                return _presets.FirstOrDefault(p => p.Name == realName);
+            }
+            return null;
+        }
+
         private void MasterVolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
-            double masterOffset = e.NewValue;
-            foreach (var slider in _matrixChannelSliders.Values)
-            {
-                if (_sliderEventHandlers.TryGetValue(slider, out var handler)) { slider.ValueChanged -= handler; }
-                double baseGain = (double)slider.Tag;
-                double newVisualValue = baseGain + masterOffset;
-                newVisualValue = Math.Max(slider.Minimum, Math.Min(slider.Maximum, newVisualValue));
-                slider.Value = newVisualValue;
-                if (handler != null) { slider.ValueChanged += handler; }
-            }
-            var preset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
+            if (!IsLoaded) return;
+            var preset = GetSelectedPreset();
             if (preset != null)
             {
                 SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain = {((int)e.NewValue)}");
@@ -471,8 +470,8 @@ namespace YZ_Volume
 
         private void MasterMuteButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
-            var preset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
+            if (!IsLoaded) return;
+            var preset = GetSelectedPreset();
             if (preset != null)
             {
                 string muteValue = ((System.Windows.Controls.Primitives.ToggleButton)sender).IsChecked == true ? "1" : "0";
@@ -482,16 +481,22 @@ namespace YZ_Volume
 
         private void MasterNudgeDownButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
-            var preset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
-            if (preset != null) SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain += -1.0");
+            if (!IsLoaded) return;
+            var preset = GetSelectedPreset();
+            if (preset != null)
+            {
+                SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain += -1.0");
+            }
         }
 
         private void MasterNudgeUpButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!IsLoaded || PresetComboBox.SelectedItem == null) return;
-            var preset = _presets.FirstOrDefault(p => p.Name == PresetComboBox.SelectedItem.ToString());
-            if (preset != null) SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain += 1.0");
+            if (!IsLoaded) return;
+            var preset = GetSelectedPreset();
+            if (preset != null)
+            {
+                SendVbanCommand($"PresetPatch[{preset.VbanIndex}].Gain += 1.0");
+            }
         }
 
         private void OnDeactivated(object? sender, EventArgs e)
