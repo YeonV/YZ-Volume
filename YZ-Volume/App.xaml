@@ -166,7 +166,7 @@
 
             <!-- EXPLICIT (KEYED) STYLES -->
             <Style x:Key="MuteToggleButtonStyle" TargetType="ToggleButton">
-                <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, /Fonts/#YZ Icons" />
                 <Setter Property="FontSize" Value="16" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
@@ -233,7 +233,7 @@
             </Style>
 
             <Style x:Key="SettingsIconButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, /Fonts/#YZ Icons" />
                 <Setter Property="FontSize" Value="16" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Foreground" Value="#AAA" />
@@ -364,7 +364,7 @@
                 </Setter>
             </Style>
             <Style x:Key="TestIconButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
-                <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, /Fonts/#YZ Icons" />
                 <Setter Property="FontSize" Value="16" />
             </Style>
 
@@ -402,7 +402,7 @@
                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
                 <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
                 <Setter Property="Padding" Value="5"/>
-                <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, /Fonts/#YZ Icons"/>
                 <Setter Property="FontSize" Value="16"/>
                 <Setter Property="Template">
                     <Setter.Value>
@@ -479,14 +479,14 @@
                 </Setter>
             </Style>
             <Style x:Key="FluentIconTextStyle" TargetType="TextBlock">
-                <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, /Fonts/#YZ Icons"/>
                 <Setter Property="VerticalAlignment" Value="Center"/>
             </Style>
             <Style x:Key="BorderlessIconButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                 <Setter Property="Background" Value="Transparent"/>
                 <Setter Property="BorderThickness" Value="0"/>
                 <Setter Property="Foreground" Value="#AAA"/>
-                <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
+                <Setter Property="FontFamily" Value="Segoe Fluent Icons, /Fonts/#YZ Icons"/>
                 <Setter Property="FontSize" Value="16"/>
                 <Setter Property="Template">
                     <Setter.Value>

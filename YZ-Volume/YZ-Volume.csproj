@@ -13,6 +13,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Fonts\yz_icons.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AudioSwitcher.AudioApi.CoreAudio" Version="3.0.3" />
     <PackageReference Include="NAudio.Core" Version="2.2.1" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
@@ -20,6 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="Fonts\yz_icons.ttf" />
     <Resource Include="icon.ico" />
   </ItemGroup>
 
